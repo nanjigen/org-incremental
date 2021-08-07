@@ -1,0 +1,155 @@
+#+TITLE: incremental-org.el
+#+BRAIN_FRIENDS: 1917a9f7-ee66-4023-a0ff-f9e52a0970c1 incremental_reading
+#+BRAIN_PARENTS: system
+#+PRIORITIES: 1 60 30
+#+HEADER-ARGS: :noweb yes
+
+The below now works!
+:PROPERTIES:
+:END:
+
+http://www.literateprogramming.com/
+
+This package is designed to bring incremental writing, [[https://help.supermemo.org/wiki/Incremental_mail_processing][incremental mail processing]] and incremental literate programming capabilities to org-mode and Emacs.
+
+It should work with [[https://github.com/alphapapa/org-ql][org-ql]] in order to find and generate lists of included files.
+
+Files can be included with a ~#+incremental_writing: t~ header.
+
+Key functions we would need:
+- A-factor
+- Priority
+- Postpone/Reschedule (Intra- and inter-day)
+- Dismissing (of files and subheaders)
+- Mercy
+- TODO keywords: ("to write", "to expand", "to rewrite", "to review", "finished")
+- Deadline awareness (modify priority/a-factor/scheduled date based on distance to deadline)
+- Statistical analysis to chart the progress through the writing material (~magit~ and ~calendar~)
+- Outstanding headline sorting by priority to match circadian cycles (high for high alterness and low for end of day)
+
+* Why incremental writing?
+:PROPERTIES:
+:CREATED:  [2021-07-26 Mon 17:42]
+:ID:       d334935e-79f3-4c5d-a614-61f902e6ecb9
+:END:
+There are various purported benefits of literate writing.
+
+* Topic spacing algorithm in elisp
+:PROPERTIES:
+:CREATED:  [2021-07-23 Fri 17:53]
+:ID:       b58fcb07-0654-4120-a26a-0347c41b621b
+:END:
+
+Some documentation for the incremental writing algorithm can be found at:
+- https://help.supermemo.org/wiki/Creativity_and_problem_solving_in_SuperMemo#Incremental_writing_algorithm
+- https://supermemopedia.com/wiki/SM_Algorithm_for_topics_%3F
+- http://supermemopedia.com/wiki/How_was_the_topic_algorithm_created%3F
+- http://supermemopedia.com/wiki/ABC_of_incremental_reading_for_any_user_of_spaced_repetition
+- https://supermemo.guru/wiki/A-Factor
+
+Existing SRS algorithms in Emacs:
+- https://github.com/emacsmirror/org-contrib/blob/master/lisp/org-learn.el
+- https://gitlab.com/phillord/org-drill
+- https://github.com/l3kn/org-fc
+
+The basic algo is here:
+
+#+begin_src example
+(Interval=OldInterval*AFActor)
+#+end_src
+
+- The first metric is self explanatory, but A-factor[fn:1] (standing for /absolute difficulty factor/) is more complicated in that it is used in older (<SM18) Supermemo's to represent item difficulty. It is still used for topics but not items in the current version.
+
+These results are then sorted by priority, a user defined variable at the core of both incremental reading and writing.
+It should be noted that a key tool in the process is occasionally micromanaging interval lengths, which might grow at an undesirable rate for important articles and thus needs to be manually shortened from time to time.
+
+Are we differentiating between =OLD_INTERVAL= and =LAST_INTERVAL=?
+
+In the functional style the interval determining algorithm:
+- We use =round= here because human work days are measured in real days, which means we have a full circadian cycle between reps.
+#+begin_src elisp
+(defun determine-next-interval (old-interval a-factor)
+  "Calcuate new interval for current headline.
+Uses: (Interval=OldInterval*AFActor)"
+    (let ((next-interval (* old-interval a-factor)))
+      (round next-interval)))
+#+end_src
+
+Apply the base algorithm to existing ~:PROPERTIES:~ keys and then write the new interval:
+#+begin_src elisp
+(defun org-smart-reschedule ()
+  (interactive)
+  (let* ((old-interval (org-entry-get (point) "OLD_INTERVAL"))
+         (a-factor (org-entry-get (point) "A-FACTOR")))
+    (setq new-interval (apply 'determine-next-interval ;; not sure if apply is the best way
+                              (mapcar #'string-to-number `(,old-interval ,a-factor))))
+    (org-entry-put (point) "NEW_INTERVAL" (prin1-to-string new-interval))))
+#+end_src
+
+Is the =NEW_INTERVAL= value then used adjust the header's SCHEDULED date?
+
+Next we need to write the previous =NEW_INTERVAL= to =OLD_INTERVAL=
+
+We need to introduce checks for valid A-factor and interval values.
+
+#+begin_src elisp
+(assert (>= 2 2))
+#+end_src
+
+#+RESULTS:
+
+We can piggy back off of some more ~org~ functions:
+- =org-default-priority= (30 in this case, with min being 60 and max 1)
+-
+
+[fn:1] :: As it stands the current use of A-factor is not necessarily optimised to make use of the spacing effect. By Woz's own admission the current topic algorithm mostly serves as an obsolescence protocol, to push articles further and further out, and thus relies on user intervention in the form of modifying priorities (this is in-line with the current model) and micromanaging interval rescheduling. The latter is not too painful but we could likely be smarter about this.
+
+* org-ql prototyping
+:PROPERTIES:
+:CREATED:  [2021-07-23 Fri 16:51]
+:ID:       35274ebc-b6d0-41e4-bf68-7749b96f34d2
+:END:
+
+Let's create a test function to start bringing up a agenda-like view of tasks:
+#+begin_src elisp
+
+#+end_src
+
+* Test bed
+:PROPERTIES:
+:CREATED:  [2021-07-23 Fri 16:57]
+:ID:       72cbe9b1-43fc-4e57-a337-36de3a25ae63
+:END:
+
+** [#30] example item
+SCHEDULED: <2021-08-01 Sun>
+:PROPERTIES:
+:ID:       dd92c87d-4407-4938-8472-a06b3882f7aa
+:A-FACTOR: 1.3
+:OLD_INTERVAL: 3
+:TOTAL_REPEATS: 8
+:LAST_REVIEWED: [2020-02-13 Thu 12:44]
+:NEW_INTERVAL: 4
+:END:
+
+This is a test IW item.
+
+#+begin_src org
+,*** [#B] example item
+SCHEDULED: <2020-02-17 Mon>
+:PROPERTIES:
+:ID:       dd92c87d-4407-4938-8472-a06b3882f7aa
+:A-FACTOR: 1.3
+:OLD_INTERVAL: 3
+:TOTAL_REPEATS: 8
+:LAST_REVIEWED: [2020-02-13 Thu 12:44]
+:NEW_INTERVAL: 4
+:END:
+#+end_src
+
+
+** UI
+:PROPERTIES:
+:CREATED:  [2021-07-26 Mon 17:46]
+:ID:       e3f797e1-ab65-40b7-8be4-b6f283851f95
+:END:
