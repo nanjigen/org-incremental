@@ -32,7 +32,7 @@ Key functions we would need:
 :CREATED:  [2021-07-26 Mon 17:42]
 :ID:       d334935e-79f3-4c5d-a614-61f902e6ecb9
 :END:
-There are various purported benefits of literate writing.
+There are various purported benefits of incremental writing.
 
 * Topic spacing algorithm in elisp
 :PROPERTIES:
@@ -58,12 +58,10 @@ The basic algo is here:
 (Interval=OldInterval*AFActor)
 #+end_src
 
-- The first metric is self explanatory, but A-factor[fn:1] (standing for /absolute difficulty factor/) is more complicated in that it is used in older (<SM18) Supermemo's to represent item difficulty. It is still used for topics but not items in the current version.
+- The first metric is self explanatory, but A-factor [fn:1] (standing for /absolute difficulty factor/) is more complicated in that it is used in older (<SM18) Supermemo's to represent item difficulty. It is still used for topics but not items in the current version.
 
 These results are then sorted by priority, a user defined variable at the core of both incremental reading and writing.
 It should be noted that a key tool in the process is occasionally micromanaging interval lengths, which might grow at an undesirable rate for important articles and thus needs to be manually shortened from time to time.
-
-Are we differentiating between =OLD_INTERVAL= and =LAST_INTERVAL=?
 
 In the functional style the interval determining algorithm:
 - We use =round= here because human work days are measured in real days, which means we have a full circadian cycle between reps.
@@ -71,8 +69,8 @@ In the functional style the interval determining algorithm:
 (defun determine-next-interval (old-interval a-factor)
   "Calcuate new interval for current headline.
 Uses: (Interval=OldInterval*AFActor)"
-    (let ((next-interval (* old-interval a-factor)))
-      (round next-interval)))
+  (let ((next-interval (* old-interval a-factor)))
+    (round next-interval)))
 #+end_src
 
 Apply the base algorithm to existing ~:PROPERTIES:~ keys and then write the new interval:
