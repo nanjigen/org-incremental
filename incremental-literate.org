@@ -1,4 +1,4 @@
-#+TITLE: incremental-org.el
+#+TITLE: org-incremental
 #+BRAIN_FRIENDS: 1917a9f7-ee66-4023-a0ff-f9e52a0970c1 incremental_reading
 #+BRAIN_PARENTS: system
 #+PRIORITIES: 1 60 30
@@ -55,13 +55,13 @@ The basic algo is here:
 #+end_src
 
 - The first metric is self explanatory, but ~A-factor~ [fn:1] (standing for /absolute difficulty factor/) is more complicated in that it is used in older versions (<SM18) of Supermemo to represent item difficulty. It is still used for topics but not items in the current version.
+
   The base value for ~A-factor~ in Supermemo is =2=, and so in essence the algo is simply a doubling mechanism:
 
   #+begin_src elisp a-factor value
 (defcustom a-factor 2.0
   :type 'float
   :group 'org-incremental)
-
   #+end_src
 
 These results are then sorted by priority, a user defined variable at the core of both incremental reading and writing.
@@ -79,7 +79,7 @@ Uses: (Interval=OldInterval*AFActor)"
 
 Apply the base algorithm to existing ~:PROPERTIES:~ keys and then write the new interval:
 #+begin_src elisp
-(defun org-smart-reschedule ()
+(defun org-incremental-smart-reschedule ()
   (interactive)
   (let* ((old-interval (org-entry-get (point) "OLD_INTERVAL"))
          (a-factor (org-entry-get (point) "A-FACTOR")))
