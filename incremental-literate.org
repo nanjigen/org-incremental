@@ -23,7 +23,7 @@ Key functions we would need:
 - Statistical analysis to chart the progress through the writing material (~magit~ and ~calendar~)
 - Outstanding headline sorting by priority to match circadian cycles (high for high alterness and low for end of day)
 
-* Why incremental writing?
+* TODO Why incremental writing?
 :PROPERTIES:
 :CREATED:  [2021-07-26 Mon 17:42]
 :ID:       d334935e-79f3-4c5d-a614-61f902e6ecb9
@@ -118,7 +118,7 @@ We can piggy back off of some more ~org~ functions:
 - =org-default-priority= (30 in this case, with min being 60 and max 1)
 -
 
-[fn:1] :: As it stands the current use of A-factor is not necessarily optimised to make use of the spacing effect. By Woz's own admission the current topic algorithm mostly serves as an obsolescence protocol, to push articles further and further out, and thus relies on user intervention in the form of modifying priorities (this is in-line with the current model) and micromanaging interval rescheduling. The latter is not too painful but we could likely be smarter about this.
+[fn:1] :: As it stands the value of the A-factor is not necessarily optimised to make use of the spacing effect. By Woz's own admission the current topic algorithm mostly serves as an obsolescence protocol, to push articles further and further out, and thus relies on user intervention in the form of modifying priorities (this is in-line with the current model) and micromanaging interval rescheduling. The latter is not too painful but we could likely be smarter about this.
 
 * org-ql prototyping
 :PROPERTIES:
