@@ -54,7 +54,15 @@ The basic algo is here:
 (Interval=OldInterval*AFActor)
 #+end_src
 
-- The first metric is self explanatory, but A-factor [fn:1] (standing for /absolute difficulty factor/) is more complicated in that it is used in older (<SM18) Supermemo's to represent item difficulty. It is still used for topics but not items in the current version.
+- The first metric is self explanatory, but ~A-factor~ [fn:1] (standing for /absolute difficulty factor/) is more complicated in that it is used in older versions (<SM18) of Supermemo to represent item difficulty. It is still used for topics but not items in the current version.
+  The base value for ~A-factor~ in Supermemo is =2=, and so in essence the algo is simply a doubling mechanism:
+
+  #+begin_src elisp a-factor value
+(defcustom a-factor 2.0
+  :type 'float
+  :group 'org-incremental)
+
+  #+end_src
 
 These results are then sorted by priority, a user defined variable at the core of both incremental reading and writing.
 It should be noted that a key tool in the process is occasionally micromanaging interval lengths, which might grow at an undesirable rate for important articles and thus needs to be manually shortened from time to time.
