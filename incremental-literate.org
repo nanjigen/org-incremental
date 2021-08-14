@@ -4,10 +4,6 @@
 #+PRIORITIES: 1 60 30
 #+HEADER-ARGS: :noweb yes
 
-The below now works!
-:PROPERTIES:
-:END:
-
 http://www.literateprogramming.com/
 
 This package is designed to bring incremental writing, [[https://help.supermemo.org/wiki/Incremental_mail_processing][incremental mail processing]] and incremental literate programming capabilities to org-mode and Emacs.
@@ -82,6 +78,20 @@ Apply the base algorithm to existing ~:PROPERTIES:~ keys and then write the new 
     (setq new-interval (apply 'determine-next-interval ;; not sure if apply is the best way
                               (mapcar #'string-to-number `(,old-interval ,a-factor))))
     (org-entry-put (point) "NEW_INTERVAL" (prin1-to-string new-interval))))
+#+end_src
+
+
+#+begin_src org
+,*** [#15] example item
+,SCHEDULED: <2020-02-17 Mon>
+,:PROPERTIES:
+,:ID:       dd92c87d-4407-4938-8472-a06b3882f7aa
+,:A-FACTOR: 2
+,:OLD_INTERVAL: 3
+,:TOTAL_REPEATS: 8
+,:LAST_REVIEWED: [2020-02-13 Thu 12:44]
+,:NEW_INTERVAL: 4
+,:END:
 #+end_src
 
 Is the =NEW_INTERVAL= value then used adjust the header's SCHEDULED date?
