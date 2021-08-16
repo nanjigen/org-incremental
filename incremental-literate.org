@@ -72,7 +72,7 @@ The basic algo is here:
 
 #+NAME: geo-progression
 #+HEADER: :headers '("\\usepackage{tikz}")
-#+BEGIN_SRC latex :results graphics file :file progression.png
+#+BEGIN_SRC latex :results graphics file :file img/progression.png
 % \pgfsetxvec{\pgfpoint{1.5cm}{0cm}}
 \begin{tikzpicture}[scale = 0.5]
 \draw[latex-latex] (0) -- (14,0) ; %edit here for the axis
@@ -82,8 +82,8 @@ The basic algo is here:
 \end{tikzpicture}
 #+end_src
 
-#+RESULTS: geo-progression
-[[file:progression.png]]
+#+ATTR_HTML: :style margin-left: auto; margin-right: auto;
+[[./img/progression.png]]
 
 These results are then sorted by priority, a user defined variable at the core of both incremental reading and writing.
 It should be noted that a key tool in the process is occasionally micromanaging interval lengths, which might grow at an undesirable rate for important articles and thus needs to be manually shortened from time to time.
