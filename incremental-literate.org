@@ -6,6 +6,7 @@
 #+LATEX_CLASS: article
 #+LATEX_HEADER: \usepackage{tikz}
 #+LATEX_HEADER: \usepackage{svg}
+#+OPTIONS: tex:t
 
 http://www.literateprogramming.com/
 
