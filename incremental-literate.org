@@ -3,7 +3,7 @@
 #+BRAIN_PARENTS: system
 #+PRIORITIES: 1 60 30
 #+HEADER-ARGS: :noweb yes
-#+LATEX_CLASS: article
+#+LATEX_HEADER: \usepackage{minted}
 #+LATEX_HEADER: \usepackage{tikz}
 #+LATEX_HEADER: \usepackage{svg}
 #+OPTIONS: tex:t
@@ -60,31 +60,31 @@ The basic algo is here:
 
 - The first metric is self explanatory, but ~A-factor~ [fn:1] (standing for /absolute difficulty factor/) is more complicated in that it is used in older versions (<SM18) of Supermemo to represent item difficulty. It is still used for topics but not items in the current version.
 
-  The base value for ~A-factor~ in Supermemo is =2=, and so in essence the algo is simply a doubling mechanism:
+The base value for ~A-factor~ in Supermemo is =2=, and so in essence the algo is simply a doubling mechanism:
 
-  #+begin_src elisp a-factor value
+#+begin_src elisp a-factor value
 (defcustom a-factor 2.0
   "Base a-factor value as per Supermemo defaults"
   :type 'float
   :group 'org-incremental)
-  #+end_src
+#+end_src
 
- In terms of review spacings this is a simple geometric sequence ($x_n=ar^{(n-1)$) with =2= as the common ratio:
+As review spacings this is a simple geometric sequence ($x_n=ar^{(n-1)$) with =2= as the common ratio:
 
 #+NAME: geo-progression
 #+HEADER: :headers '("\\usepackage{tikz}")
 #+BEGIN_SRC latex :results graphics file :file img/progression.png
 % \pgfsetxvec{\pgfpoint{1.5cm}{0cm}}
 \begin{tikzpicture}[scale = 0.5]
-\draw[latex-latex] (0) -- (14,0) ; %edit here for the axis
-\foreach \x in  {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14} % edit here for the vertical lines
-\draw[shift={(\x,0)},color=black] (0pt,0pt) -- (0pt,-5pt) node[below]
-{$\x$};
+  \draw[latex-latex] (0) -- (14,0) ; %edit here for the axis
+  \foreach \x in  {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14} % edit here for the vertical lines
+  \draw[shift={(\x,0)},color=black] (0pt,0pt) -- (0pt,-5pt) node[below]
+  {$\x$};
 \end{tikzpicture}
 #+end_src
 
-#+ATTR_HTML: :style margin-left: auto; margin-right: auto;
-[[./img/progression.png]]
+#+RESULTS: geo-progression
+[[file:img/progression.png]]
 
 These results are then sorted by priority, a user defined variable at the core of both incremental reading and writing.
 It should be noted that a key tool in the process is occasionally micromanaging interval lengths, which might grow at an undesirable rate for important articles and thus needs to be manually shortened from time to time.
