@@ -92,13 +92,20 @@ GeoSeq(1, 2, 6)
 : 32.0
 
 #+NAME: geo-progression
-#+HEADER: :headers '("\\usepackage{tikz}")
-#+BEGIN_SRC latex :results graphics file :file img/progression.png
+#+HEADER: :headers '("\\usepackage{tikz}" "\\usepackage(luacode)")
+#+BEGIN_SRC latex :results graphics file :file img/progression.png :noweb yes
 % \pgfsetxvec{\pgfpoint{1.5cm}{0cm}}
-\begin{tikzpicture}[scale = 0.5]
-  \draw[latex-latex] (0) -- (14,0) ; %edit here for the axis
-  \foreach \x in  {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14} % edit here for the vertical lines
-  \draw[shift={(\x,0)},color=black] (0pt,0pt) -- (0pt,-5pt) node[below]
+\begin{tikzpicture}[scale = 0.4]
+  % \node[above] {$\dfrac{x_n=1 x 2^{(n-1)}$};
+  \\
+  \draw[latex ->] (0,0)--(21,0);
+  \foreach \x in {\frac}
+  \draw[->, bend left] (0,0) to (21,0);
+  \foreach \x in {0,...,21}
+  \draw[shift={(\x,0)},color=black] (0pt,2pt) -- (0pt,-2pt) node[below]
+  \begin{luacode}
+   «geometric sequence lua»
+  \end{luacode}
   {$\x$};
 \end{tikzpicture}
 #+end_src
