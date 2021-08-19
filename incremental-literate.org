@@ -220,6 +220,7 @@ SCHEDULED: <2020-02-17 Mon>
 :END:
 [[orgit-rev:~/org/org-brain/projects/org-incremental/::test-branch][~/org/org-brain/projects/org-incremental/ (magit-rev test-branch)]]
 
+[[orgit-rev:~/org/org-brain/projects/org-incremental/::347e6ff61ae9745e52d7e562d777a64f0e1a331e][~/org/org-brain/projects/org-incremental/ (magit-rev 347e6ff)]]
 * COMMENT local variables
 :PROPERTIES:
 :CREATED:  [2021-08-17 Tue 22:49]
