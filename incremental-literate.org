@@ -71,6 +71,26 @@ The base value for ~A-factor~ in Supermemo is =2=, and so in essence the algo is
 
 As review spacings this is a simple geometric sequence ($x_n=ar^{(n-1)$) with =2= as the common ratio:
 
+#+begin_src lua :noweb yes :noweb-ref geometric sequence lua :results output
+function GeoSeq (a, r, n)
+   for i = 1, n do
+   x = a * r^(i-1)
+   print(x)
+   end
+   return x
+end
+
+GeoSeq(1, 2, 6)
+#+end_src
+
+#+RESULTS:
+: 1.0
+: 2.0
+: 4.0
+: 8.0
+: 16.0
+: 32.0
+
 #+NAME: geo-progression
 #+HEADER: :headers '("\\usepackage{tikz}")
 #+BEGIN_SRC latex :results graphics file :file img/progression.png
