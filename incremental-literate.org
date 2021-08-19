@@ -218,3 +218,13 @@ SCHEDULED: <2020-02-17 Mon>
 :CREATED:  [2021-07-26 Mon 17:46]
 :ID:       e3f797e1-ab65-40b7-8be4-b6f283851f95
 :END:
+
+* COMMENT local variables
+:PROPERTIES:
+:CREATED:  [2021-08-17 Tue 22:49]
+:ID:       e99d9699-e0df-4736-b63f-cb6a9ced3142
+:END:
+# Local Variables:
+# org-babel-noweb-wrap-start: "«"
+# org-babel-noweb-wrap-end: "»"
+# End:
