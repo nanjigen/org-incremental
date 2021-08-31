@@ -72,40 +72,69 @@ The base value for ~A-factor~ in Supermemo is =2=, and so in essence the algo is
 As review spacings this is a simple geometric sequence ($x_n=ar^{(n-1)$) with =2= as the common ratio:
 
 #+begin_src lua :noweb yes :noweb-ref geometric sequence lua :results output
+local sequence = {}
 function GeoSeq (a, r, n)
    for i = 1, n do
    x = a * r^(i-1)
-   print(x)
+   sequence[#sequence+1] = x
    end
    return x
 end
 
-GeoSeq(1, 2, 6)
+function print_seq (a, r, n)
+  GeoSeq(a, r, n)
+  for index, value in ipairs(sequence) do
+    print(value)
+    -- tex.print(math.floor(value))
+  end
+end
 #+end_src
 
 #+RESULTS:
-: 1.0
-: 2.0
-: 4.0
-: 8.0
-: 16.0
-: 32.0
+
+#+begin_src lua :noweb yes :results output html
+«geometric sequence lua»
+print_seq(1, 2, 5)
+#+end_src
+
+#+RESULTS:
+#+begin_export html
+1.0
+2.0
+4.0
+8.0
+16.0
+#+end_export
 
 #+NAME: geo-progression
-#+HEADER: :headers '("\\usepackage{tikz}" "\\usepackage(luacode)")
-#+BEGIN_SRC latex :results graphics file :file img/progression.png :noweb yes
+#+HEADER: :headers '("\\usepackage{tikz}" "\\usepackage{luacode}")
+#+BEGIN_SRC latex :results graphics file :file img/progression.png :noweb yes :tangle test.tex
 % \pgfsetxvec{\pgfpoint{1.5cm}{0cm}}
+\begin{luacode}
+  «geometric sequence lua»
+
+function print_seq (a, r, n)
+  GeoSeq(a, r, n)
+  tex.print("")
+  for index, value in ipairs(sequence) do
+  tex.print(math.floor(value)..[[, ]])
+  tex.print("")
+  end
+end
+
+\end{luacode}
+
+\newcommand\printseqq[3]{\directlua{print_seq(#1,#2,#3)}}
+
+% \printseqq{1}{2}{5}
 \begin{tikzpicture}[scale = 0.4]
-  % \node[above] {$\dfrac{x_n=1 x 2^{(n-1)}$};
+  \node[above] {$\dfrac{x_n=1 x 2^{(n-1)}$};
   \\
-  \draw[latex ->] (0,0)--(21,0);
-  \foreach \x in {\frac}
-  \draw[->, bend left] (0,0) to (21,0);
+  \draw[latex-latex] (0,0) -- (21,0);
+  % \foreach \x in \printseq{1}{2}{5}
+  % \draw[->={(\x,0)}, bend left] node [right];
   \foreach \x in {0,...,21}
-  \draw[shift={(\x,0)},color=black] (0pt,2pt) -- (0pt,-2pt) node[below]
-  \begin{luacode}
-   «geometric sequence lua»
-  \end{luacode}
+  \draw[shift={(\x,0)},color=black] (0pt,0pt) -- (0pt,-2pt) node[below]
   {$\x$};
 \end{tikzpicture}
 #+end_src
