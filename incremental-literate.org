@@ -160,7 +160,8 @@ Uses: (Interval=OldInterval*AFActor)"
     (round next-interval)))
 #+end_src
 
-Apply the base algorithm to existing ~:PROPERTIES:~ keys and then write the new interval:
+Apply the base algorithm to existing ~:PROPERTIES:~ keys and then write the new interval, moving the previous interval into "OLD_INTERVAL" key.
+The item is rescheduled using ~org~'s internal =org-schedule= function which will be used later for building and sorting a que.
 #+begin_src elisp
 (defun org-incremental-smart-reschedule ()
   (interactive)
@@ -172,7 +173,9 @@ Apply the base algorithm to existing ~:PROPERTIES:~ keys and then write the new 
     (org-schedule nil (time-add (current-time)
                                 (days-to-time
                                  new-interval)))
-    (org-entry-put (point) "OLD_INTERVAL" old-interval)))
+    (org-entry-put (point) "OLD_INTERVAL" old-interval)
+    (org-set-property "LAST_REVIEWED"
+                      (org-drill-time-to-inactive-org-timestamp (current-time)))))
 #+end_src
 
 #+end_src
