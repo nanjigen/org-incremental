@@ -1,9 +1,9 @@
 #+TITLE: org-incremental
 #+BRAIN_FRIENDS: 1917a9f7-ee66-4023-a0ff-f9e52a0970c1 incremental_reading
-#+BRAIN_PARENTS: system
+#+BRAIN_PARENTS: system literate-projects
 #+PRIORITIES: 1 60 30
 #+HEADER-ARGS: :noweb yes
-#+LATEX_HEADER: \usepackage{minted}
+# #+LATEX_HEADER: \usepackage{minted}
 #+LATEX_HEADER: \usepackage{tikz}
 #+LATEX_HEADER: \usepackage{svg}
 #+OPTIONS: tex:t
