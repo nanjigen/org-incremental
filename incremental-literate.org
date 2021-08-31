@@ -2,7 +2,7 @@
 #+BRAIN_FRIENDS: 1917a9f7-ee66-4023-a0ff-f9e52a0970c1 incremental_reading
 #+BRAIN_PARENTS: system literate-projects
 #+PRIORITIES: 1 60 30
-#+HEADER-ARGS: :noweb yes
+#+PROPERTY: header-args :noweb yes
 # #+LATEX_HEADER: \usepackage{minted}
 #+LATEX_HEADER: \usepackage{tikz}
 #+LATEX_HEADER: \usepackage{svg}
@@ -34,7 +34,7 @@ Key functions we would need:
 :END:
 There are various purported benefits of incremental writing.
 
-* Topic spacing algorithm in elisp
+* Topic spacing algorithm
 :PROPERTIES:
 :CREATED:  [2021-07-23 Fri 17:53]
 :ID:       b58fcb07-0654-4120-a26a-0347c41b621b
@@ -92,19 +92,17 @@ end
 
 #+RESULTS:
 
-#+begin_src lua :noweb yes :results output html
+#+begin_src lua :noweb yes :results output pp
 «geometric sequence lua»
 print_seq(1, 2, 5)
 #+end_src
 
 #+RESULTS:
-#+begin_export html
-1.0
-2.0
-4.0
-8.0
-16.0
-#+end_export
+: 1.0
+: 2.0
+: 4.0
+: 8.0
+: 16.0
 
 #+NAME: geo-progression
 #+HEADER: :headers '("\\usepackage{tikz}" "\\usepackage{luacode}")
@@ -145,6 +143,13 @@ end
 These results are then sorted by priority, a user defined variable at the core of both incremental reading and writing.
 It should be noted that a key tool in the process is occasionally micromanaging interval lengths, which might grow at an undesirable rate for important articles and thus needs to be manually shortened from time to time.
 
+** Topic spacing algorithm in Elisp
+:PROPERTIES:
+:CREATED:  [2021-08-31 Tue 15:05]
+:ID:       5a4ff6c0-c4a6-4d44-8fdc-aeb488fedaff
+:END:
+Instead of re-implementing a geometric sequence, we'll copy SM's simple function and have our code act off of repetition data written to the ~:PROPERTIES:~ drawer.
+
 In the functional style the interval determining algorithm:
 - We use =round= here because human work days are measured in real days, which means we have a full circadian cycle between reps.
 #+begin_src elisp
@@ -166,23 +171,21 @@ Apply the base algorithm to existing ~:PROPERTIES:~ keys and then write the new 
     (org-entry-put (point) "NEW_INTERVAL" (prin1-to-string new-interval))))
 #+end_src
 
-
+Having our code act on an example heading:
 #+begin_src org
 ,*** [#15] example item
-,SCHEDULED: <2020-02-17 Mon>
+,SCHEDULED: <2021-09-04 Sat>
 ,:PROPERTIES:
 ,:ID:       dd92c87d-4407-4938-8472-a06b3882f7aa
 ,:A-FACTOR: 2
-,:OLD_INTERVAL: 3
-,:TOTAL_REPEATS: 8
-,:LAST_REVIEWED: [2020-02-13 Thu 12:44]
+,:OLD_INTERVAL: 2
+,:TOTAL_REPEATS: 2
+,:LAST_REVIEWED: [2021-08-31 Mon 15:12]
 ,:NEW_INTERVAL: 4
 ,:END:
 #+end_src
 
-Is the =NEW_INTERVAL= value then used adjust the header's SCHEDULED date?
-
-Next we need to write the previous =NEW_INTERVAL= to =OLD_INTERVAL=
+Next we need to write the previous =NEW_INTERVAL= to =OLD_INTERVAL= on subsequent repetitions
 
 We need to introduce checks for valid A-factor and interval values.
 
