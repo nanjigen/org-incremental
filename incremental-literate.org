@@ -164,11 +164,17 @@ Apply the base algorithm to existing ~:PROPERTIES:~ keys and then write the new 
 #+begin_src elisp
 (defun org-incremental-smart-reschedule ()
   (interactive)
-  (let* ((old-interval (org-entry-get (point) "OLD_INTERVAL"))
+  (let* ((old-interval (org-entry-get (point) "NEW_INTERVAL"))
          (a-factor (org-entry-get (point) "A-FACTOR")))
     (setq new-interval (apply 'determine-next-interval ;; not sure if apply is the best way
                               (mapcar #'string-to-number `(,old-interval ,a-factor))))
-    (org-entry-put (point) "NEW_INTERVAL" (prin1-to-string new-interval))))
+    (org-entry-put (point) "NEW_INTERVAL" (prin1-to-string new-interval))
+    (org-schedule nil (time-add (current-time)
+                                (days-to-time
+                                 new-interval)))
+    (org-entry-put (point) "OLD_INTERVAL" old-interval)))
+#+end_src
+
 #+end_src
 
 Having our code act on an example heading:
