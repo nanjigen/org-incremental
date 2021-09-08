@@ -20,14 +20,20 @@ Key functions we would need:
 - A-factor
 - Priority
 - Postpone/Reschedule (Intra- and inter-day)
-- Dismissing (of files and subheaders)
+- Dismissing (of files and sub-headers)
 - Mercy
 - TODO keywords: ("to write", "to expand", "to rewrite", "to review", "finished")
 - Deadline awareness (modify priority/a-factor/scheduled date based on distance to deadline)
 - Statistical analysis to chart the progress through the writing material (~magit~ and ~calendar~)
-- Outstanding headline sorting by priority to match circadian cycles (high for high alterness and low for end of day)
+- Outstanding headline sorting by priority to match circadian cycles (high for high alertness and low for end of day)
 
-* TODO Why incremental writing?
+* Overview
+:PROPERTIES:
+:CREATED:  [2021-09-08 Wed 21:38]
+:ID:       a981430d-1319-4d5a-b036-c1478fdf7cd4
+:END:
+
+** TODO Why incremental writing?
 :PROPERTIES:
 :CREATED:  [2021-07-26 Mon 17:42]
 :ID:       d334935e-79f3-4c5d-a614-61f902e6ecb9
@@ -62,7 +68,7 @@ The basic algo is here:
 
 The base value for ~A-factor~ in Supermemo is =2=, and so in essence the algo is simply a doubling mechanism:
 
-#+begin_src elisp a-factor value
+#+begin_src elisp :noweb-ref a-factor value
 (defcustom a-factor 2.0
   "Base a-factor value as per Supermemo defaults"
   :type 'float
@@ -148,7 +154,7 @@ It should be noted that a key tool in the process is occasionally micromanaging 
 :CREATED:  [2021-08-31 Tue 15:05]
 :ID:       5a4ff6c0-c4a6-4d44-8fdc-aeb488fedaff
 :END:
-Instead of re-implementing a geometric sequence, we'll copy SM's simple function and have our code act off of repetition data written to the ~:PROPERTIES:~ drawer.
+Instead of re-implementing a geometric sequence directly, we'll copy SM's simple function and have our code act off of repetition data written to the ~:PROPERTIES:~ drawer.
 
 In the functional style the interval determining algorithm:
 - We use =round= here because human work days are measured in real days, which means we have a full circadian cycle between reps.
@@ -178,7 +184,7 @@ The item is rescheduled using ~org~'s internal =org-schedule= function which wil
                       (org-drill-time-to-inactive-org-timestamp (current-time)))))
 #+end_src
 
-*** Various schedule functions
+** Various schedule functions
 :PROPERTIES:
 :CREATED:  [2021-08-31 Tue 18:15]
 :ID:       e02e162b-2845-4dd2-9e09-b40792302541
@@ -249,7 +255,6 @@ We can piggy back off of some more ~org~ functions:
 - =org-default-priority= (30 in this case, with min being 60 and max 1)
 -
 
-[fn:1] :: As it stands the value of the A-factor is not necessarily optimised to make use of the spacing effect. By Woz's own admission the current topic algorithm mostly serves as an obsolescence protocol, to push articles further and further out, and thus relies on user intervention in the form of modifying priorities (this is in-line with the current model) and micromanaging interval rescheduling. The latter is not too painful but we could likely be smarter about this.
 
 * org-ql prototyping
 :PROPERTIES:
@@ -289,6 +294,77 @@ This is a test IW item.
 [[orgit-rev:~/org/org-brain/projects/org-incremental/::test-branch][~/org/org-brain/projects/org-incremental/ (magit-rev test-branch)]]
 
 [[orgit-rev:~/org/org-brain/projects/org-incremental/::347e6ff61ae9745e52d7e562d777a64f0e1a331e][~/org/org-brain/projects/org-incremental/ (magit-rev 347e6ff)]]
+
+
+[fn:1] :: As it stands the value of the A-factor is not necessarily optimised to make use of the spacing effect. By Woz's own admission the current topic algorithm mostly serves as an obsolescence protocol, to push articles further and further out, and thus relies on user intervention in the form of modifying priorities (this is in-line with the current model) and micromanaging interval rescheduling. The latter is not too painful but we could likely be smarter about this.
+* Files
+:PROPERTIES:
+:CREATED:  [2021-09-08 Wed 21:45]
+:ID:       7f0e3ea9-aca0-4df4-add7-cc63f111f40d
+:END:
+
+** org-incremental/org-incremental.el
+:PROPERTIES:
+:CREATED:  [2021-09-08 Wed 21:52]
+:ID:       0bbb98b5-df68-41d9-a16d-54099acb3d0f
+:END:
+#+begin_src elisp :mkdirp yes :noweb yes :tangle org-incremental.el
+;;; org-incremental.el --- Incremental Writing System for Emacs org-mode -*- lexical-binding: t; -*-
+
+;; Copyright (C) 2021 Daniel Otto
+
+;; Author: Daniel Otto
+;; Package-requires: ((emacs "26.3") (org "9.4"))
+
+;; This program is free software; you can redistribute it and/or modify
+;; it under the terms of the GNU General Public License as published by
+;; the Free Software Foundation, either version 3 of the License, or
+;; (at your option) any later version.
+
+;; This program is distributed in the hope that it will be useful,
+;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;; GNU General Public License for more details.
+
+;; You should have received a copy of the GNU General Public License
+;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+;;; Commentary:
+;;
+;; Incremental writing for org-mode
+;;
+;;; Code:
+
+(require 'org-incremental-core)
+#+end_src
+
+** org-incremental/org-incremental-core.el
+:PROPERTIES:
+:CREATED:  [2021-09-08 Wed 21:57]
+:ID:       c84e5ad7-9be6-4083-bfec-ae662ceb0005
+:END:
+#+begin_src elisp :mkdirp yes :noweb yes :tangle org-incremental-core.el
+#+end_src
+
+** org-incremental/org-incremental-scheduler.el
+:PROPERTIES:
+:CREATED:  [2021-09-08 Wed 21:52]
+:ID:       b135bb8c-53c6-4fe2-b78a-22d7f3e89511
+:END:
+#+begin_src elisp :mkdirp yes :noweb yes :tangle org-incremental-scheduler.el
+«a-factor value»
+#+end_src
+
+** org-incremental/org-incremental-hydra
+:PROPERTIES:
+:CREATED:  [2021-09-08 Wed 21:52]
+:ID:       c107d6a7-0639-427c-ae3e-2030d2173936
+:END:
+** org-incremental/org-incremental-analysis
+:PROPERTIES:
+:CREATED:  [2021-09-08 Wed 21:52]
+:ID:       dd022a74-bfc0-4ce0-9b38-f9be59be2375
+:END:
 * COMMENT local variables
 :PROPERTIES:
 :CREATED:  [2021-08-17 Tue 22:49]
