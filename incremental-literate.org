@@ -58,6 +58,9 @@ Existing SRS algorithms in Emacs:
 - https://gitlab.com/phillord/org-drill
 - https://github.com/l3kn/org-fc
 
+Other implementations:
+https://github.com/bjsi/incremental-writing/blob/master/src/scheduler.ts
+
 The basic algo is here:
 
 #+begin_src example
