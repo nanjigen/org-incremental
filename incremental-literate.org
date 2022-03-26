@@ -46,22 +46,7 @@ There are various purported benefits of incremental writing.
 :ID:       b58fcb07-0654-4120-a26a-0347c41b621b
 :END:
 
-Some documentation for the incremental writing algorithm can be found at:
-- https://help.supermemo.org/wiki/Creativity_and_problem_solving_in_SuperMemo#Incremental_writing_algorithm
-- https://supermemopedia.com/wiki/SM_Algorithm_for_topics_%3F
-- http://supermemopedia.com/wiki/How_was_the_topic_algorithm_created%3F
-- http://supermemopedia.com/wiki/ABC_of_incremental_reading_for_any_user_of_spaced_repetition
-- https://supermemo.guru/wiki/A-Factor
-
-Existing SRS algorithms in Emacs:
-- https://github.com/emacsmirror/org-contrib/blob/master/lisp/org-learn.el
-- https://gitlab.com/phillord/org-drill
-- https://github.com/l3kn/org-fc
-
-Other implementations:
-https://github.com/bjsi/incremental-writing/blob/master/src/scheduler.ts
-
-The basic algo is here:
+In short, the basic algo for spacing topics is here:
 
 #+begin_src example
 (Interval=OldInterval*AFActor)
@@ -187,7 +172,34 @@ The item is rescheduled using ~org~'s internal =org-schedule= function which wil
                       (org-drill-time-to-inactive-org-timestamp (current-time)))))
 #+end_src
 
-** Various schedule functions
+** TODO [#20] Store item data externally?                        :incremental:
+:PROPERTIES:
+:CREATED:  [2021-11-30 Tue 18:58]
+:ID:       3e1b81b4-ffb9-4bb2-9106-7cd2ec96fb06
+:END:
+Maybe use ~org-roam's~ dual model - mirror header information in a db which can be accessed for generating views etc.
+** resources
+:PROPERTIES:
+:CREATED:  [2022-03-26 Sat 12:31]
+:ID:       08b151d6-e27e-495d-8d3a-e17752d4cd3d
+:END:
+Some documentation for the incremental writing algorithm can be found at:
+- https://help.supermemo.org/wiki/Creativity_and_problem_solving_in_SuperMemo#Incremental_writing_algorithm
+- https://supermemopedia.com/wiki/SM_Algorithm_for_topics_%3F
+- http://supermemopedia.com/wiki/How_was_the_topic_algorithm_created%3F
+- http://supermemopedia.com/wiki/ABC_of_incremental_reading_for_any_user_of_spaced_repetition
+- https://supermemo.guru/wiki/A-Factor
+
+Existing SRS algorithms in Emacs:
+- https://github.com/emacsmirror/org-contrib/blob/master/lisp/org-learn.el
+- https://gitlab.com/phillord/org-drill
+- https://github.com/l3kn/org-fc
+- https://github.com/abo-abo/pamparam
+
+Other implementations:
+https://github.com/bjsi/incremental-writing/blob/master/src/scheduler.ts
+
+* Various schedule functions
 :PROPERTIES:
 :CREATED:  [2021-08-31 Tue 18:15]
 :ID:       e02e162b-2845-4dd2-9e09-b40792302541
