@@ -146,17 +146,18 @@ Instead of re-implementing a geometric sequence directly, we'll copy SM's simple
 
 In the functional style the interval determining algorithm:
 - We use =round= here because human work days are measured in real days, which means we have a full circadian cycle between reps.
-#+begin_src elisp
-(defun determine-next-interval (old-interval a-factor)
+
+#+begin_src elisp :noweb-ref spacing algo
+(defun org-incremental-determine-next-interval (old-interval a-factor)
   "Calcuate new interval for current headline.
 Uses: (Interval=OldInterval*AFactor)"
   (let ((next-interval (* old-interval a-factor)))
     (round next-interval)))
 #+end_src
 
-Apply the base algorithm to existing ~:PROPERTIES:~ keys and then write the new interval, moving the previous interval into "OLD_INTERVAL" key.
+Apply the base algorithm to existing ~:PROPERTIES:~ keys and then write the new interval, moving the previous interval into the "OLD_INTERVAL" key.
 The item is rescheduled using ~org~'s internal =org-schedule= function which will be used later for building and sorting a que.
-#+begin_src elisp
+#+begin_src elisp :noweb-ref item rescheduler
 (defun org-incremental-smart-reschedule ()
   (interactive)
   (let* ((old-interval (org-entry-get (point) "NEW_INTERVAL"))
@@ -169,7 +170,7 @@ The item is rescheduled using ~org~'s internal =org-schedule= function which wil
                                  new-interval)))
     (org-entry-put (point) "OLD_INTERVAL" old-interval)
     (org-set-property "LAST_REVIEWED"
-                      (org-drill-time-to-inactive-org-timestamp (current-time)))))
+                      (org-incremental-time-to-inactive-org-timestamp (current-time)))))
 #+end_src
 
 ** TODO [#20] Store item data externally?                        :incremental:
