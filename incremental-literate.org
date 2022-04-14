@@ -278,8 +278,17 @@ We can piggy back off of some more ~org~ functions:
 :ID:       35274ebc-b6d0-41e4-bf68-7749b96f34d2
 :END:
 
-Let's create a test function to start bringing up a agenda-like view of tasks:
+Here we create a test function to bring up an agenda-like view of tasks. Due (and overdue) items from the ~org-todo-keywords-for-agenda~ list with the =incremental= tag are sorted by priority and date.
+
+*Note that sorting numerical priorities does not seem to be working in ~org-ql~. See the relevant [[https://github.com/alphapapa/org-ql/issues/274][issue]].
+
 #+begin_src elisp
+(org-ql-search (org-agenda-files)
+  '(and (todo)
+        (tags "incremental"))
+  :sort '(priority scheduled)
+  :title "Incremental Items")
+#+end_src
 
 #+end_src
 
