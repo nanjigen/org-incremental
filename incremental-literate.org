@@ -41,7 +41,16 @@ Features:
 :CREATED:  [2021-07-26 Mon 17:42]
 :ID:       d334935e-79f3-4c5d-a614-61f902e6ecb9
 :END:
-There are various purported benefits of incremental writing.
+
+Incremental writing is a concept co-developed by Piotr Wozniak and [[https://supermemopedia.com/wiki/How_I_use_creative_elaboration_with_the_help_of_incremental_reading][users of Supermemo]] employing the topic spacing feature to break writing projects into sub-chapters, as a form of creative elaboration.
+
+Woz [[http://help.supermemo.org/wiki/Creativity_and_problem_solving_in_SuperMemo#Incremental_writing][writes]]:
+#+begin_quote
+(Texts)... may be bloated and repetitive, however, with incremental reading, they can be prioritized in a rational way. *Incremental writing leaves the texts highly granular and the flow of thought is jagged*, however ... this is an advantage as all individual articles and subarticles *carry sufficient local context to be read independently*.
+#+end_quote
+
+The above relates to the granularity of articles written using IW lending itself to IR as extracts tend to be discrete. In the context of incremental literate programming, I believe the contextualisation provided by prose encapsulated in subheadings offer these same advantages while also then allowing us to use the spacing effect over blocks of code. Org-mode's narrowing and widening features further help to constrain or expand context in the flow of IW.
+
 
 * Topic spacing algorithm
 :PROPERTIES:
