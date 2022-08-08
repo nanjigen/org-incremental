@@ -332,8 +332,36 @@ This is a test IW item.
 
 [[orgit-rev:~/org/org-brain/projects/org-incremental/::347e6ff61ae9745e52d7e562d777a64f0e1a331e][~/org/org-brain/projects/org-incremental/ (magit-rev 347e6ff)]]
 
+* Notes
+:PROPERTIES:
+:CREATED:  [2022-07-29 Fri 11:15]
+:ID:       6bc70751-cc03-4d48-ad29-acd906f43f08
+:END:
 
 [fn:1] :: As it stands the value of the A-factor is not necessarily optimised to make use of the spacing effect. By Woz's own admission the current topic algorithm mostly serves as an obsolescence protocol, to push articles further and further out, and thus relies on user intervention in the form of modifying priorities (this is in-line with the current model) and micromanaging interval rescheduling. The latter is not too painful but we could likely be smarter about this.
+
+* Resources
+:PROPERTIES:
+:CREATED:  [2022-03-26 Sat 12:31]
+:ID:       08b151d6-e27e-495d-8d3a-e17752d4cd3d
+:END:
+
+Some documentation for the incremental writing algorithm can be found at:
+- https://help.supermemo.org/wiki/Creativity_and_problem_solving_in_SuperMemo#Incremental_writing_algorithm
+- https://supermemopedia.com/wiki/SM_Algorithm_for_topics_%3F
+- http://supermemopedia.com/wiki/How_was_the_topic_algorithm_created%3F
+- http://supermemopedia.com/wiki/ABC_of_incremental_reading_for_any_user_of_spaced_repetition
+- https://supermemo.guru/wiki/A-Factor
+
+Existing SRS algorithms in Emacs:
+- https://github.com/emacsmirror/org-contrib/blob/master/lisp/org-learn.el
+- https://gitlab.com/phillord/org-drill
+- https://github.com/l3kn/org-fc
+- https://github.com/abo-abo/pamparam
+
+Other implementations:
+https://github.com/bjsi/incremental-writing/blob/master/src/scheduler.ts
+
 * Files
 :PROPERTIES:
 :CREATED:  [2021-09-08 Wed 21:45]
