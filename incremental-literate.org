@@ -8,11 +8,9 @@
 #+LATEX_HEADER: \usepackage{svg}
 #+OPTIONS: tex:t
 
-http://www.literateprogramming.com/
+This package is designed to bring [[https://supermemo.guru/wiki/Incremental_writing][incremental writing]], [[https://help.supermemo.org/wiki/Incremental_mail_processing][incremental mail processing]] and incremental [[http://www.literateprogramming.com/][literate programming]] capabilities to org-mode and Emacs.
 
-This package is designed to bring incremental writing, [[https://help.supermemo.org/wiki/Incremental_mail_processing][incremental mail processing]] and incremental literate programming capabilities to org-mode and Emacs.
-
-It should work with [[https://github.com/alphapapa/org-ql][org-ql]] in order to find and generate lists of included files.
+It works with [[https://github.com/alphapapa/org-ql][org-ql]] in order to find and generate lists of included files.
 
 Files can be included with a ~#+incremental_writing: t~ header.
 
@@ -23,9 +21,14 @@ Key functions we would need:
 - Dismissing (of files and sub-headers)
 - Mercy
 - TODO keywords: ("to write", "to expand", "to rewrite", "to review", "finished")
-- Deadline awareness (modify priority/a-factor/scheduled date based on distance to deadline)
 - Statistical analysis to chart the progress through the writing material (~magit~ and ~calendar~)
 - Outstanding headline sorting by priority to match circadian cycles (high for high alertness and low for end of day)
+
+Features:
+
+  + *Incremental writing of email with ~mu4e~!*
+  + *Incremental literate programming* with org-mode and SM's algorithm!
+- Deadline awareness (modify priority/a-factor/scheduled date based on distance to deadline)
 
 * Overview
 :PROPERTIES:
