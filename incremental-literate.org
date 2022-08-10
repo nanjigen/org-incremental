@@ -466,7 +466,7 @@ https://github.com/bjsi/incremental-writing/blob/master/src/scheduler.ts
 :END:
 
 #+begin_src elisp :mkdirp yes :noweb yes :tangle org-incremental-hydra.el
-;;; org-incremental-schedular.el --- Incremental Writing System for org-mode -*- lexical-binding: t; -*-
+;;; org-incremental-hdyra.el --- Incremental Writing System for org-mode -*- lexical-binding: t; -*-
 «license»
 #+end_src
 
@@ -477,7 +477,7 @@ https://github.com/bjsi/incremental-writing/blob/master/src/scheduler.ts
 :END:
 
 #+begin_src elisp :mkdirp yes :noweb yes :tangle org-incremental-analysis.el
-;;; org-incremental-schedular.el --- Incremental Writing System for org-mode -*- lexical-binding: t; -*-
+;;; org-incremental-analysis.el --- Incremental Writing System for org-mode -*- lexical-binding: t; -*-
 «license»
 #+end_src
 
