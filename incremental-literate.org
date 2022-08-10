@@ -438,20 +438,31 @@ https://github.com/bjsi/incremental-writing/blob/master/src/scheduler.ts
 :CREATED:  [2021-09-08 Wed 21:52]
 :ID:       b135bb8c-53c6-4fe2-b78a-22d7f3e89511
 :END:
+
 #+begin_src elisp :mkdirp yes :noweb yes :tangle org-incremental-scheduler.el
 «a-factor value»
 #+end_src
 
-** org-incremental/org-incremental-hydra
+** org-incremental/org-incremental-hydra.el
 :PROPERTIES:
 :CREATED:  [2021-09-08 Wed 21:52]
 :ID:       c107d6a7-0639-427c-ae3e-2030d2173936
 :END:
-** org-incremental/org-incremental-analysis
+
+#+begin_src elisp :mkdirp yes :noweb yes :tangle org-incremental-hydra.el
+
+#+end_src
+
+** org-incremental/org-incremental-analysis.el
 :PROPERTIES:
 :CREATED:  [2021-09-08 Wed 21:52]
 :ID:       dd022a74-bfc0-4ce0-9b38-f9be59be2375
 :END:
+
+#+begin_src elisp :mkdirp yes :noweb yes :tangle org-incremental-analysis.el
+
+#+end_src
+
 * COMMENT local variables
 :PROPERTIES:
 :CREATED:  [2021-08-17 Tue 22:49]
