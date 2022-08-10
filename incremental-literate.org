@@ -395,13 +395,21 @@ https://github.com/bjsi/incremental-writing/blob/master/src/scheduler.ts
 :CREATED:  [2021-09-08 Wed 21:52]
 :ID:       0bbb98b5-df68-41d9-a16d-54099acb3d0f
 :END:
-#+begin_src elisp :mkdirp yes :noweb yes :tangle org-incremental.el
-;;; org-incremental.el --- Incremental Writing System for Emacs org-mode -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2021 Daniel Otto
+#+begin_src elisp :mkdirp yes :noweb yes
+;;; org-incremental.el --- Incremental Writing System for org-mode -*- lexical-binding: t; -*-
+#+end_src
+
+#+begin_src elisp :mkdirp yes :noweb yes :noweb-ref license
+;;; Header:
 
 ;; Author: Daniel Otto
+;; Version: 0.0
 ;; Package-requires: ((emacs "26.3") (org "9.4"))
+
+;; URL: https://github.com/nanjigen/org-incremental
+
+;; Copyright (C) 2021-2022 Daniel Otto
 
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -420,6 +428,12 @@ https://github.com/bjsi/incremental-writing/blob/master/src/scheduler.ts
 ;;
 ;; Incremental writing for org-mode
 ;;
+#+end_src
+
+#+begin_src elisp :mkdirp yes :noweb yes :tangle org-incremental.el
+;;; org-incremental.el --- Incremental Writing System for org-mode -*- lexical-binding: t; -*-
+
+«license»
 ;;; Code:
 
 (require 'org-incremental-core)
@@ -440,7 +454,9 @@ https://github.com/bjsi/incremental-writing/blob/master/src/scheduler.ts
 :END:
 
 #+begin_src elisp :mkdirp yes :noweb yes :tangle org-incremental-scheduler.el
-«a-factor value»
+;;; org-incremental-scheduler.el --- Incremental Writing System for org-mode -*- lexical-binding: t; -*-
+«license»
+
 #+end_src
 
 ** org-incremental/org-incremental-hydra.el
@@ -450,7 +466,8 @@ https://github.com/bjsi/incremental-writing/blob/master/src/scheduler.ts
 :END:
 
 #+begin_src elisp :mkdirp yes :noweb yes :tangle org-incremental-hydra.el
-
+;;; org-incremental-schedular.el --- Incremental Writing System for org-mode -*- lexical-binding: t; -*-
+«license»
 #+end_src
 
 ** org-incremental/org-incremental-analysis.el
@@ -460,7 +477,8 @@ https://github.com/bjsi/incremental-writing/blob/master/src/scheduler.ts
 :END:
 
 #+begin_src elisp :mkdirp yes :noweb yes :tangle org-incremental-analysis.el
-
+;;; org-incremental-schedular.el --- Incremental Writing System for org-mode -*- lexical-binding: t; -*-
+«license»
 #+end_src
 
 * COMMENT local variables
