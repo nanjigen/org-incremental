@@ -1,8 +1,9 @@
 #+TITLE: org-incremental
 #+BRAIN_FRIENDS: 1917a9f7-ee66-4023-a0ff-f9e52a0970c1 incremental_reading
 #+BRAIN_PARENTS: system literate-projects
-#+PRIORITIES: 1 60 30
 #+PROPERTY: header-args :noweb yes
+#+FILETAGS: incremental
+#+org_incremental: t
 # #+LATEX_HEADER: \usepackage{minted}
 #+LATEX_HEADER: \usepackage{tikz}
 #+LATEX_HEADER: \usepackage{svg}
@@ -1076,6 +1077,11 @@ Write a function that /deincrements/ a given headline/element that has a deadlin
 :ID:       08b151d6-e27e-495d-8d3a-e17752d4cd3d
 :END:
 
+- Justifications for incremental writing:
+- https://www.masterhowtolearn.com/2020-06-09-incremental-writing-no-more-writer-block/
+- https://help.supermemo.org/wiki/Incremental_learning#Incremental_writing
+- https://www.masterhowtolearn.com/2020-08-09-the-magic-behind-incremental-writing-spacing-and-interleaving/
+
 Some documentation for the incremental writing algorithm can be found at:
 - https://help.supermemo.org/wiki/Creativity_and_problem_solving_in_SuperMemo#Incremental_writing_algorithm
 - https://supermemopedia.com/wiki/SM_Algorithm_for_topics_%3F
@@ -1090,7 +1096,7 @@ Existing SRS algorithms in Emacs:
 - https://github.com/abo-abo/pamparam
 
 Other implementations:
-https://github.com/bjsi/incremental-writing/blob/master/src/scheduler.ts
+- https://github.com/bjsi/incremental-writing/blob/master/src/scheduler.ts
 
 * Files
 :PROPERTIES:
