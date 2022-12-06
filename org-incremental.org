@@ -1047,7 +1047,7 @@ Write a function that /deincrements/ a given headline/element that has a deadlin
 :CREATED:  [2022-08-09 Tue 11:40]
 :ID:       a52386ff-0e62-498f-bc9f-0a0db4bde7d6
 :END:
-** TODO Mercy/spread funcitonality
+** TODO Mercy/spread functonality
 :PROPERTIES:
 :CREATED:  [2022-08-09 Tue 11:40]
 :ID:       bf1aaa18-1147-4190-a6a0-6b0d32051cd0
@@ -1062,6 +1062,15 @@ Write a function that /deincrements/ a given headline/element that has a deadlin
 :CREATED:  [2022-08-09 Tue 11:40]
 :ID:       859db2df-c980-4543-9898-b149e77f3ab3
 :END:
+
+** TODO [#2] Store element data externally?                      :incremental:
+SCHEDULED: <2022-07-31 Sun>
+:PROPERTIES:
+:CREATED:  [2021-11-30 Tue 18:58]
+:ID:       3e1b81b4-ffb9-4bb2-9106-7cd2ec96fb06
+:END:
+
+Maybe use ~org-roam's~ dual model - mirror header information in a db which can be accessed for generating views etc.
 
 * Notes
 :PROPERTIES:
