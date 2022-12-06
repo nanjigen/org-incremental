@@ -13,8 +13,6 @@ This package is designed to bring [[https://supermemo.guru/wiki/Incremental_writ
 
 It works with [[https://github.com/alphapapa/org-ql][org-ql]] in order to find and generate lists of included files.
 
-Files can be included with a ~#+incremental_writing: t~ header.
-
 Key functions we would need:
 - A-factor
 - Priority
@@ -27,9 +25,9 @@ Key functions we would need:
 
 Features:
 
-  + *Incremental writing of email with ~mu4e~!*
   + *Incremental literate programming* with org-mode and SM's algorithm!
-- Deadline awareness (modify priority/a-factor/scheduled date based on distance to deadline)
+  + *Incremental writing of email with ~mu4e~!*
+  + Deadline awareness (modify priority/a-factor/scheduled date based on distance to deadline)
 
 * Overview
 :PROPERTIES:
