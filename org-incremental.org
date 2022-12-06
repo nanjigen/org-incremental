@@ -245,58 +245,26 @@ Maybe use ~org-roam's~ dual model - mirror header information in a db which can 
 
 Apply the base algorithm to existing ~:PROPERTIES:~ keys and then write the new interval, moving the previous interval into the "=OLD_INTERVAL=" key.
 The element is rescheduled using ~org~'s internal =org-schedule= function which will be used later for building and sorting a que.
+
 #+begin_src elisp :noweb-ref element rescheduler
 (defun org-incremental-smart-reschedule ()
+  "Collect values from headline at point and apply topic algo"
   (interactive)
-  (let* ((old-interval (org-entry-get (point) "NEW_INTERVAL"))
-         (a-factor (org-entry-get (point) "A-FACTOR")))
-    (setq new-interval (apply 'determine-next-interval ;; not sure if apply is the best way
-                              (mapcar #'string-to-number `(,old-interval ,a-factor))))
+  (let* ((old-interval (org-incremental-element-current-interval))
+         (a-factor (org-incremental-element-a-factor))
+         (prior-reps (org-incremental-element-total-repeats)))
+    (setq new-interval (org-incremental-determine-next-interval old-interval a-factor))
     (org-entry-put (point) "NEW_INTERVAL" (prin1-to-string new-interval))
     (org-schedule nil (time-add (current-time)
                                 (days-to-time
                                  new-interval)))
-    (org-entry-put (point) "OLD_INTERVAL" old-interval)
+    (org-entry-put (point) "OLD_INTERVAL" (number-to-string old-interval))
+    (org-entry-put (point) "TOTAL_REPEATS" (number-to-string (+ 1 prior-reps)))
     (org-set-property "LAST_REVIEWED"
                       (org-incremental-time-to-inactive-org-timestamp (current-time)))))
 #+end_src
 
-** TODO [#20] Store item data externally?                        :incremental:
-:PROPERTIES:
-:CREATED:  [2021-11-30 Tue 18:58]
-:ID:       3e1b81b4-ffb9-4bb2-9106-7cd2ec96fb06
-:END:
-Maybe use ~org-roam's~ dual model - mirror header information in a db which can be accessed for generating views etc.
-** resources
-:PROPERTIES:
-:CREATED:  [2022-03-26 Sat 12:31]
-:ID:       08b151d6-e27e-495d-8d3a-e17752d4cd3d
-:END:
-Some documentation for the incremental writing algorithm can be found at:
-- https://help.supermemo.org/wiki/Creativity_and_problem_solving_in_SuperMemo#Incremental_writing_algorithm
-- https://supermemopedia.com/wiki/SM_Algorithm_for_topics_%3F
-- http://supermemopedia.com/wiki/How_was_the_topic_algorithm_created%3F
-- http://supermemopedia.com/wiki/ABC_of_incremental_reading_for_any_user_of_spaced_repetition
-- https://supermemo.guru/wiki/A-Factor
-
-Existing SRS algorithms in Emacs:
-- https://github.com/emacsmirror/org-contrib/blob/master/lisp/org-learn.el
-- https://gitlab.com/phillord/org-drill
-- https://github.com/l3kn/org-fc
-- https://github.com/abo-abo/pamparam
-
-Other implementations:
-https://github.com/bjsi/incremental-writing/blob/master/src/scheduler.ts
-
-* Various schedule functions
-:PROPERTIES:
-:CREATED:  [2021-08-31 Tue 18:15]
-:ID:       e02e162b-2845-4dd2-9e09-b40792302541
-:END:
-Bring in some functionality for interacting with the ~:PROPERTIES:~ drawer.
-Much of this is refactored code lifted from [[https://gitlab.com/phillord/org-drill/-/blob/master/org-drill.el][org-drill]].
-
-#+begin_src elisp
+#+begin_src elisp :noweb-ref element rescheduler
 (defun org-incremental-time-to-inactive-org-timestamp (time)
   "Convert TIME into org-mode timestamp."
   (format-time-string
@@ -305,47 +273,279 @@ Much of this is refactored code lifted from [[https://gitlab.com/phillord/org-dr
 #+end_src
 
 #+begin_src elisp
+(defun org-drill-hypothetical-next-review-date (quality)
+  "Returns an integer representing the number of days into the future
+that the current item would be scheduled, based on a recall quality
+of QUALITY."
+  (let ((weight (org-entry-get (point) "DRILL_CARD_WEIGHT")))
+    (cl-destructuring-bind (last-interval repetitions failures
+                                       total-repeats meanq ease)
+        (org-drill-get-item-data)
+      (if (stringp weight)
+          (setq weight (read weight)))
+      (cl-destructuring-bind (next-interval _repetitions _ease
+                                         _failures _meanq _total-repeats
+                                         &optional _ofmatrix)
+          (cl-case org-drill-spaced-repetition-algorithm
+            (sm5 (org-drill-determine-next-interval-sm5 last-interval repetitions
+                                              ease quality failures
+                                              meanq total-repeats
+                                              org-drill-sm5-optimal-factor-matrix))
+            (sm2 (org-drill-determine-next-interval-sm2 last-interval repetitions
+                                              ease quality failures
+                                              meanq total-repeats))
+            (simple8 (org-drill-determine-next-interval-simple8 last-interval repetitions
+                                                      quality failures meanq
+                                                      total-repeats)))
+        (cond
+         ((not (cl-plusp next-interval))
+          0)
+         ((and (numberp weight) (cl-plusp weight))
+          (+ last-interval
+             (max 1.0 (/ (- next-interval last-interval) weight))))
+         (t
+          next-interval))))))
+
+(defun org-drill-hypothetical-next-review-dates ()
+  "Return hypothetical next review dates."
+  (let ((intervals nil))
+    (dotimes (q 6)
+      (push (max (or (car intervals) 0)
+                 (org-drill-hypothetical-next-review-date q))
+            intervals))
+    (reverse intervals)))
+#+end_src
+
+* Elements
+:PROPERTIES:
+:CREATED:  [2022-03-27 Sun 12:29]
+:ID:       54d1f035-1536-451c-bdc9-3355c8597b76
+:END:
+
+Much of this is refactored code lifted from [[https://gitlab.com/phillord/org-drill/-/blob/master/org-drill.el][org-drill]] and [[https://www.leonrische.me/pages/org_flashcards.html][org-fc]].
+
+Headlines are considered 'elements' when tagged with the =org-incremental-element-tag=:
+
+#+begin_src elisp :noweb-ref element-options
+(defcustom org-incremental-element-tag "incremental"
+  "Tag for marking headlines as incremental writing elements."
+  :type 'string
+  :group 'org-incremental)
+#+end_src
+
+And are drawn from the customizable list of directories:
+#+begin_src elisp :noweb-ref element-options
+(defcustom org-incremental-directories (org-agenda-files)
+  "Files to searched for elements"
+  :type 'string
+  :group 'org-incremental)
+#+end_src
+
+If wanted, we can further refine our list of actionable candidates by specifying a TODO keyword(s) list:
+
+#+begin_src elisp :noweb-ref element-options
+(defcustom org-incremental-todo-keywords nil
+  "If non-nil, supply list as viable TODO keyword(s)
+to consider as rep-able `org-incremental' entries"
+  :type 'string
+  :group 'org-incremental)
+#+end_src
+
+** Element properties
+:PROPERTIES:
+:CREATED:  [2022-08-11 Thu 15:12]
+:ID:       93ecad32-6f69-479a-9b5b-8d030af75c73
+:END:
+** Checking and moving to elements
+:PROPERTIES:
+:CREATED:  [2022-07-22 Fri 14:20]
+:ID:       90ec04c0-2ece-4f34-a74e-81c6ffbcc860
+:END:
+
+Here we perform various checks over the element in question
+#+begin_src elisp :noweb-ref element-checks
+(defun org-incremental-entry-p ()
+  "Check if the current heading is an incrementalised element."
+  (member org-incremental-element-tag (org-get-tags nil 'local)))
+#+end_src
+
+#+begin_src elisp :noweb-ref element-checks
+(defun org-incremental-operable-entry-p (marker)
+  "Is MARKER, or the point, in an operable TODO?"
+    (member (org-get-todo-state) org-incremental-todo-keywords))
+#+end_src
+
+#+begin_src elisp :noweb-ref element-checks
+(defun org-incremental-entry-new-p ()
+  "Return non-nil if the entry at point is new."
+  (and (org-incremental-entry-p)
+       (let ((element-time (org-get-scheduled-time (point))))
+         (null element-time))))
+#+end_src
+
+Shouldn't this be using UUID's? What constitutes =marker=?
+#+begin_src elisp
+(defun org-incremental-goto-entry (marker)
+  "Switch to the buffer and position of MARKER."
+  (switch-to-buffer (marker-buffer marker))
+  (goto-char marker))
+#+end_src
+
+** Element creation
+:PROPERTIES:
+:CREATED:  [2021-11-29 Mon 12:23]
+:ID:       72ca6a31-4fe7-45ae-aba2-2d68711693a0
+:END:
+
+#+begin_src elisp :noweb-ref element-creation-functions
+(defun org-incremental--add-tag (tag)
+  "Add TAG to the heading at point."
+  (org-set-tags
+   (cl-remove-duplicates
+    (cons tag (org-get-tags nil 'local))
+    :test #'string=)))
+
+(defun org-incremental--remove-tag (tag)
+  "Add TAG to the heading at point."
+  (org-set-tags
+   (remove tag (org-get-tags nil 'local))))
+
+#+end_src
+
+The below function is used to create an incrementalized headline. The tagging lets us know that it should be scheduled.
+
+#+begin_src elisp :noweb-ref element-creation-functions
+(defun org-incremental--init-element ()
+  "Initialize the current headline as a topic."
+  (if (org-incremental-entry-p)
+      (error "Headline is already an incremental element"))
+  (org-back-to-heading)
+  (org-id-get-create)
+  (org-expiry-insert-created)
+  (org-set-property org-incremental-last-reviewed-property "0") ;; TODO can all this be collapsed?
+  (org-set-property org-incremental-total-repeats-property "0")
+  (org-set-property org-incremental-old-interval-property "0")
+  (org-set-property org-incremental-new-interval-property "1") ;; this kicks off the geo seq
+  (org-set-property org-incremental-a-factor-property (number-to-string a-factor))
+  (org-incremental--add-tag org-incremental-element-tag)
+  (if org-incremental-prompt-for-priority-p
+      (let ((org-priority-highest org-incremental-priority-highest)
+            (org-priority-lowest org-incremental-priority-lowest)
+            (org-priority-default org-incremental-default-priority))
+       (org-priority))))
+#+end_src
+
+If we use the =#+org_incremental: t= buffer option perhaps we can steal ~org-auto-tangle~'s functionality and check the buffer on save for actionable TODOs or headers that have not yet been initialized and turn them into elements.
+
+** Retrieve element data
+:PROPERTIES:
+:CREATED:  [2021-11-29 Mon 10:35]
+:ID:       3d66a38f-e251-4e81-aeb1-8abdd41c770b
+:END:
+
+Bring in some functionality for interacting with the ~:PROPERTIES:~ drawer.
+
+#+begin_src elisp :noweb-ref element-stats
+(defun org-incremental-element-old-interval (&optional default)
+  "Return previous interval for element at point."
+  (let ((val (org-entry-get (point) "OLD_INTERVAL")))
+    (if val
+        (string-to-number val)
+      (or default 0))))
+
+(defun org-incremental-element-a-factor (&optional default)
+  "Return previous interval for element at point."
+  (let ((val (org-entry-get (point) "A_FACTOR")))
+    (if val
+        (string-to-number val)
+      (or default 0))))
+
+(defun org-incremental-element-current-interval (&optional default)
+  "Return pre-rep interval for element at point."
+  (let ((val (org-entry-get (point) "NEW_INTERVAL")))
+    (if val
+        (string-to-number val)
+      (or default 0))))
+
+(defun org-incremental-element-total-repeats (&optional default)
+  "Return total number of repeats for the element at point."
+  (let ((val (org-entry-get (point) "TOTAL_REPEATS")))
+    (if val
+        (string-to-number val)
+      (or default 0))))
+
+#+end_src
+
+#+begin_src elisp :noweb-ref element-stats
+(defun org-incremental-get-element-data ()
+  "Returns a list of 3 elements, containing all the stored recall
+  data for the element at point:
+- LAST-INTERVAL is the interval in days that was used to schedule the element's
+  current review date.
+- REPEATS is the number of times the element has been repeated.
+- A-FACTOR is the number by which to space out a repped element.
+"
+  (let ((learn-str (org-entry-get (point) "LEARN_DATA"))
+        (repeats (org-incremental-entry-total-repeats :missing)))
+    (cond
+     (learn-str
+      (let ((learn-data (and learn-str
+                             (read learn-str))))
+        (list (nth 0 learn-data)        ; last interval
+              (nth 1 learn-data)        ; repetitions
+              (org-incremental-entry-failure-count)
+              (nth 1 learn-data)
+              (org-incremental-entry-last-quality)
+              (nth 2 learn-data)        ; EF
+              )))
+     ((not (eql :missing repeats))
+      (list (org-incremental-entry-last-interval)
+            (org-incremental-entry-repeats-since-fail)
+            (org-incremental-entry-total-repeats)
+            (org-incremental-entry-average-quality)
+            (org-incremental-entry-ease)))
+     (t  ; virgin element
+      (list 0 0 0 0 nil nil)))))
+#+end_src
+
+#+begin_src elisp
 (defun org-incremental-days-since-last-review ()
   "Nil means a last review date has not yet been stored for
-the item.
+the element.
 Zero means it was reviewed today.
 A positive number means it was reviewed that many days ago.
 A negative number means the date of last review is in the future --
 this should never happen."
-  (let ((datestr (org-entry-get (point) "LAST_REVIEWED")))
+  (let ((datestr (org-entry-get (point) org-incremental-last-reviewed-property)))
     (when datestr
       (- (time-to-days (current-time))
          (time-to-days (apply 'encode-time
                               (org-parse-time-string datestr)))))))
 #+end_src
 
-#+begin_src elisp
-(defun org-incremental-entry-total-repeats (&optional default)
-  "Return the SM total number of repeats for the entry at point."
-  (let ((val (org-entry-get (point) "TOTAL_REPEATS")))
-    (if val
-        (string-to-number val)
-      (or default 0))))
-#+end_src
+** Store element data
+:PROPERTIES:
+:CREATED:  [2021-11-29 Mon 10:37]
+:ID:       7669d568-a905-4adb-b579-d6b5fd0053e3
+:END:
 
 #+begin_src elisp
-(defun org-incremental-entry-p (&optional marker)
-  "Is MARKER, or the point, in an 'incrementalised item'? This will return nil if
-the point is inside a subheading of an incremental item -- to handle that
-situation use `org-part-of-drill-entry-p'."
-  (save-excursion
-    (when marker
-      (org-drill-goto-entry marker))
-    (member org-drill-question-tag (org-get-tags nil t))))
+(defun org-drill-store-element-data (last-interval repeats failures
+                                                total-repeats meanq
+                                                ease)
+  "Stores the given data in the element at point."
+  (org-entry-delete (point) "LEARN_DATA")
+  (org-set-property "DRILL_LAST_INTERVAL"
+                    (number-to-string (org-drill-round-float last-interval 4)))
+  (org-set-property "TOTAL_REPEATS" (number-to-string total-repeats)))
+
 #+end_src
 
-#+begin_src elisp
-(defun org-incremental-entry-new-p ()
-  "Return non-nil if the entry at point is new."
-  (and (org-incremental-entry-p)
-       (let ((item-time (org-get-scheduled-time (point))))
-         (null item-time))))
-#+end_src
+** checks
+:PROPERTIES:
+:CREATED:  [2021-11-29 Mon 10:35]
+:ID:       b50e5eb3-39da-48fb-af77-8016d12b577b
+:END:
 
 We need to introduce checks for valid A-factor and interval values.
 
@@ -353,60 +553,503 @@ We need to introduce checks for valid A-factor and interval values.
 (assert (>= 2 2))
 #+end_src
 
-#+RESULTS:
+** Delete review data
+:PROPERTIES:
+:CREATED:  [2022-08-09 Tue 11:40]
+:ID:       8d1b2b03-d39a-46a7-a0a7-b90ad714809f
+:END:
+
+#+begin_src elisp
+(defun org-drill-strip-entry-data ()
+  (dolist (prop org-drill-scheduling-properties)
+    (org-delete-property prop))
+  (org-schedule '(4)))
+
+
+(defun org-drill-strip-all-data (&optional scope)
+  "Delete scheduling data from every drill entry in scope. This
+function may be useful if you want to give your collection of
+entries to someone else.  Scope defaults to the current buffer,
+and is specified by the argument SCOPE, which accepts the same
+values as `org-drill-scope'."
+  (interactive)
+  (when (yes-or-no-p
+         "Delete scheduling data from ALL items in scope: are you sure?")
+    (cond
+     ((null scope)
+      ;; Scope is the current buffer. This means we can use
+      ;; `org-delete-property-globally', which is faster.
+      (dolist (prop org-drill-scheduling-properties)
+        (org-delete-property-globally prop))
+      (org-drill-map-entries (lambda () (org-schedule '(4))) scope))
+     (t
+      (org-drill-map-entries 'org-drill-strip-entry-data scope)))
+    (message "Done.")))
+#+end_src
+
+* Priority system
+:PROPERTIES:
+:CREATED:  [2021-11-29 Mon 13:24]
+:ID:       a327cd46-cad0-450c-8cce-237bd691b47c
+:END:
 
 We can piggy back off of some more ~org~ functions:
 - =org-default-priority= (30 in this case, with min being 60 and max 1)
--
 
+Baseline function for setting priority at topic creation.
+Inherit from custom priority.
 
-* org-ql prototyping
+#+begin_src elisp
+(org-priority org-incremental-priority-default)
+#+end_src
+
+#+begin_src elisp :noweb-ref priority-system
+(defcustom org-incremental-default-priority 'org-default-priority ;; TODO how to make this use system defaults?
+  "Use a custom set of default priorities, ")
+
+(defcustom org-incremental-priority-highest 'org-priority-highest
+  "Set a custom highest priority for use in `incremental' items
+Use the current org-priority if unset")
+
+(defcustom org-incremental-priority-lowest 'org-priority-lowest
+  "Set a custom lowest priority for use in `incremental' items
+Use the current org-priority if unset")
+
+#+end_src
+
+Note that sorting numerical priorities does not seem to be working in ~org-ql~. See the relevant [[https://github.com/alphapapa/org-ql/issues/274][issue]].
+
+Use a simple 1-10 range for now:
+#+begin_src elisp
+(setq org-priority-highest 1
+      org-priority-lowest 10
+      org-priority-default 5)
+#+end_src
+
+Experimenting with local
+#+begin_src elisp
+(setq-local org-priority-highest 1
+            org-priority-lowest 10
+            org-priority-default 5)
+#+end_src
+
+#+begin_src elisp
+(setq org-priority-highest ?A
+      org-priority-lowest ?Z
+      org-priority-default ?M)
+#+end_src
+
+This might be useful for setting whether a created subtree implicitly inherits a parent priority (via cookies), inherits it explicitly (the priority is set textually) or via a custom function
+#+begin_src elisp :noweb-ref priority-system
+(defcustom org-incremental-priority-inheret 'default
+  "Set how priorities are inherited amongst subtrees")
+#+end_src
+
+#+begin_src elisp :noweb yes :noweb-ref priority-system
+(defcustom org-incremental-prompt-for-priority-p nil
+  "If non-nil, prompt to select headline priority at element creation."
+  :group 'org-incremental
+  :type 'boolean)
+#+end_src
+
+#+RESULTS:
+: org-incremental-prompt-for-priority-p
+
+Generic function for visually selecting an elements priority
+See ~org-priority~
+#+begin_src elisp
+(defun org-incremental--select-priority ()
+  "")
+#+end_src
+
+* Queue
 :PROPERTIES:
 :CREATED:  [2021-07-23 Fri 16:51]
 :ID:       35274ebc-b6d0-41e4-bf68-7749b96f34d2
 :END:
 
-Here we create a test function to bring up an agenda-like view of tasks. Due (and overdue) items from the ~org-todo-keywords-for-agenda~ list with the =incremental= tag are sorted by priority and date.
+Here we create a test function to bring up an agenda-like view of tasks. Due (and overdue) elements from the ~org-todo-keywords-for-agenda~ list with the =incremental= tag are sorted by priority and date.
 
-*Note that sorting numerical priorities does not seem to be working in ~org-ql~. See the relevant [[https://github.com/alphapapa/org-ql/issues/274][issue]].
+It is currently possible to use =org-incremental-element-tag= as the variable for the tags parameter in the below search, but attempting to use the =org-incremental-todo-keywords= variable for a todo list throws an ~rx~ error.
+
+Should the outstanding que show not-yet scheduled items? How does the SM scheduler work?
+
+#+begin_src elisp :noweb-ref queue-views
+(defun org-incremental-view-outstanding ()
+  "List outstanding elements via a `org-ql' search"
+  (interactive)
+  (org-ql-search org-incremental-directories
+    '(or (and (tags org-incremental-element-tag)
+              (todo "NEXT")
+              (scheduled :to today))
+         (and (tags org-incremental-element-tag)
+              (todo "NEXT")
+              (not (scheduled :from today))))
+    :sort '(date priority)
+    :title "Incremental Elements"))
+#+end_src
+
+** NEXT [#O] Incremental repped today                            :incremental:
+SCHEDULED: <2022-08-20 Sat>
+:PROPERTIES:
+:CREATED:  [2022-08-14 Sun 14:35]
+:ID:       796e6a52-720b-4b30-b6ab-25f84a52ba64
+:LAST_REVIEWED: 0
+:TOTAL_REPEATS: 0
+:OLD_INTERVAL: 0
+:NEW_INTERVAL: 1
+:A_FACTOR: 2.0
+:END:
+#+begin_src elisp :noweb-ref queue-views
+(defun org-incremental-view-completed ()
+  "List elements repped today via a `org-ql' search"
+  (interactive)
+    (org-ql-search org-incremental-directories
+      '(and (tags org-incremental-element-tag)
+            (todo "NEXT")
+            (scheduled >= today))
+      :sort '(date priority)
+      :title "Incremental Elements"))
+#+end_src
+
+#+begin_src elisp :results no
+(org-ql-block org-incremental-directories
+  '(and (tags org-incremental-element-tag)
+        (todo "NEXT"))
+  :sort '(date priority)
+  :title "Incremental Elements")
+#+end_src
+
+Some function to introduce noise into the schedule listing
+#+begin_src elisp
+
+#+end_src
+
+** NEXT [#A] improve incremental goto function                   :incremental:
+SCHEDULED: <2022-11-09 Wed>
+:PROPERTIES:
+:CREATED:  [2022-08-14 Sun 14:34]
+:ID:       a3cefb3e-61c9-4426-8f58-3c677f096cb6
+:LAST_REVIEWED: [2022-11-01 Tue 12:48]
+:TOTAL_REPEATS: 4
+:OLD_INTERVAL: 5
+:NEW_INTERVAL: 8
+:A_FACTOR: 1.68
+:TRIGGER:  chain-find-next(NEXT,from-current,priority-up,effort-down)
+:END:
+maybe save point to go back
+I could maybe do the storing in the =org-incremental-smart-reschedule= function.
+Should deactivated org-incremental-mode in the previous buffer and activate it in the new buffer.
+
+#+begin_src elisp :noweb-ref queue-goto-functions
+(defun org-incremental-goto-next ()
+  "Rep and go to next outstanding element via a `org-ql' search"
+  (interactive)
+  (if org-incremental-mode
+      (with-current-buffer (current-buffer)
+      (progn
+        (org-incremental-smart-reschedule)
+        (org-incremental-view-outstanding)
+        (org-incremental-mode 0))
+        ;; (org-ql-view-refresh)
+        (with-current-buffer "*Org QL View: Incremental Elements*"
+          (org-agenda-switch-to)
+          (org-narrow-to-subtree)
+          (org-incremental-mode 1)))
+    (error "Not in incremental session")))
+#+end_src
+
+Go back to recently completed via the =org-incremental-view-recent= function
+#+begin_src elisp :noweb-ref queue-goto-functions
+(defun org-incremental-goto-previous ()
+  "Rep and go to next outstanding element via a `org-ql' search"
+  (interactive)
+  (if org-incremental-mode
+      (progn
+        (org-incremental-smart-reschedule)
+        (org-incremental-view-outstanding)
+        ;; (org-ql-view-refresh)
+        (with-current-buffer "*Org QL View: Incremental Elements*"
+          (org-agenda-switch-to)
+          (org-narrow-to-subtree)))
+    (error "Not in incremental session")))
+#+end_src
+
+Go back to recently completed by accessing ~org-incremental-org-last-reviewed-property~
+#+begin_src elisp :results no
+(defun org-incremental-view-recent ()
+  "List recently reviewed elements via a `org-ql' search"
+  (interactive)
+  (org-ql-search org-incremental-directories
+    '(or (and (tags org-incremental-element-tag)
+              (todo "NEXT")
+              (scheduled :to today))
+         (and (tags org-incremental-element-tag)
+              (todo "NEXT")
+              (not (scheduled :from today))))
+    :sort '(date priority)
+    :title "Incremental Elements"))
+(org-incremental-org-last-reviewed-property)
+#+end_src
+
+** NEXT Write simple goto function
+:PROPERTIES:
+:TRIGGER:  chain-find-next(NEXT,from-current,priority-up,effort-down)
+:END:
+
+#+begin_src elisp :noweb-ref simple-queue-goto-functions
+(defun org-incremental-simple-goto-next ()
+  "Rep and go to next outstanding element via a `org-ql' search."
+  (interactive)
+  (progn
+    (with-current-buffer "*Org QL View: Training*"
+      (org-agenda-next-item 1)
+      (org-incremental-org-brain-agenda))
+    (with-current-buffer "*Org QL View: Training*"
+      (org-agenda-previous-item 1)
+      (org-incremental-simple-reschedule)
+      (org-ql-view-refresh))))
+
+(defun org-incremental-org-brain-agenda ()
+  "Pop org-brain visualise from agenda."
+  (with-current-buffer "*Org QL View: Training*"
+    (let* ((marker (org-get-at-bol 'org-marker))
+           (id-from-marker (org-id-get marker))
+           (entry-from-id (org-brain-entry-from-id id-from-marker)))
+      (org-brain-visualize entry-from-id))))
+#+end_src
+
+** NEXT rep-reschedule
+:PROPERTIES:
+:TRIGGER:  chain-find-next(NEXT,from-current,priority-up,effort-down)
+:CREATED:  [2022-08-15 Mon 15:42]
+:ID:       0a49de46-60e0-49b1-843c-6b2aa1f44524
+:END:
+
+** Check out
+:PROPERTIES:
+:CREATED:  [2022-03-26 Sat 20:26]
+:ID:       cf68e7c3-3b4c-4fd1-8251-f5fa9df31532
+:END:
+
+https://github.com/alphapapa/org-ql/issues/88
+memoization
+
+* Interface
+:PROPERTIES:
+:CREATED:  [2021-10-09 Sat 14:49]
+:ID:       ec51031f-ca20-4842-89d4-e9bbf7247629
+:END:
+
+** Storing views
+:PROPERTIES:
+:CREATED:  [2022-08-21 Sun 13:55]
+:ID:       a7646e02-20ad-4074-827d-aebd07e44349
+:END:
+
+A nice ability would be saving and storing a particular project layout at a given element. This would allow us to return to working on that headline much faster as all the resources would be made available when it is traversed to in the queue.
+
+Things we might want to store:
+
+- Buffer position
+- Cursor position
+- Opened buffers
+- Window layout
+- Related resources (links, info nodes etc.)
+
+Let's have this as an optional user-defined setting so as not to interfere with individual workflows:
 
 #+begin_src elisp
-(org-ql-search (org-agenda-files)
-  '(and (todo)
-        (tags "incremental"))
-  :sort '(priority scheduled)
-  :title "Incremental Items")
+(defcustom org-incremental-store-view-p nil
+  "If non-nil store the current window layout to the current headline"
+  :type 'boolean
+  :group 'org-incremental)
 #+end_src
 
+#+begin_src elisp
+(defcustom org-incremental-store-view-function "")
 #+end_src
 
-* Test bed
+A promising package to enable this functionality is alphapapa's [[https://github.com/alphapapa/burly.el][burly]] in tandem with ~bookmark+~.
+
+*** TODO Repair ~bkmp-bookmark-record-from-name-error~
 :PROPERTIES:
-:CREATED:  [2021-07-23 Fri 16:57]
-:ID:       72cbe9b1-43fc-4e57-a337-36de3a25ae63
+:CREATED:  [2022-11-01 Tue 12:45]
+:ID:       ce518549-1aa0-4afa-968b-73e34c2243f0
+:END:
+Currently I am experiencing a bug with ~bookmark+~ where while attempting to restore some part of the ~burly~ bookmark, =nil= is passed and ~eww~ buffers are restored but not placed in the correct window configuration:
+
+=error in process filter: bmkp-bookmark-record-from-name: No such bookmark in bookmark list: ‘’=
+
+How to write a test in Emacs?
+#+begin_src elisp
+(bmkp-bookmark-record-from-name)
+#+end_src
+
+** hydra
+:PROPERTIES:
+:CREATED:  [2021-10-09 Sat 14:50]
+:ID:       86e613a9-b9f0-4f11-a181-fad65c3cf9af
 :END:
 
-** [#30] example item
-SCHEDULED: <2021-09-04 Sat>
+** transient
 :PROPERTIES:
-:ID:       dd92c87d-4407-4938-8472-a06b3882f7aa
-:A-FACTOR: 2
-:OLD_INTERVAL: 2
-:TOTAL_REPEATS: 2
-:LAST_REVIEWED: [2021-08-31 Mon 15:12]
-:NEW_INTERVAL: 4
+:CREATED:  [2022-03-26 Sat 12:27]
+:ID:       faa31d73-bdec-41f7-a679-b8d37d9e13cc
 :END:
 
-This is a test IW item.
+https://www.reddit.com/r/emacs/comments/f3o0v8/anyone_have_good_examples_for_transient/
+https://gist.github.com/abrochard/dd610fc4673593b7cbce7a0176d897de
+https://github.com/emacs-mirror/emacs/blob/master/lisp/international/emoji.el
+https://github.com/magit/transient
+https://github.com/magit/transient/wiki/Developer-Quick-Start-Guide
 
-** UI
+#+begin_src elisp
+(transient-define-prefix transient-toys-hello ()
+  "Say hello"
+   [("h" "hello" (lambda () (interactive) (message "hello")))])
+#+end_src
+
+#+RESULTS:
+| [1 transient-column nil ((1 transient-suffix (:key h :description hello :command transient:transient-toys-hello:hello)))] |
+
+*** NEXT Brainstorm org-incremental-transient functions
 :PROPERTIES:
-:CREATED:  [2021-07-26 Mon 17:46]
-:ID:       e3f797e1-ab65-40b7-8be4-b6f283851f95
+:CREATED:  [2022-08-14 Sun 14:36]
+:ID:       07e3baf0-a75f-44ae-9a53-0597d7a0c539
 :END:
-[[orgit-rev:~/org/org-brain/projects/org-incremental/::test-branch][~/org/org-brain/projects/org-incremental/ (magit-rev test-branch)]]
+** other HUDs
+:PROPERTIES:
+:CREATED:  [2021-10-09 Sat 14:50]
+:ID:       c44afafd-b231-41e9-a80a-a6346be3b4ae
+:END:
 
-[[orgit-rev:~/org/org-brain/projects/org-incremental/::347e6ff61ae9745e52d7e562d777a64f0e1a331e][~/org/org-brain/projects/org-incremental/ (magit-rev 347e6ff)]]
+https://github.com/sp1ff/elfeed-score
+
+** Dashboard
+:PROPERTIES:
+:CREATED:  [2021-11-29 Mon 10:14]
+:ID:       f5090ae0-6e6f-4791-9de8-0f25e8d6f66e
+:END:
+
+** Modeline
+:PROPERTIES:
+:CREATED:  [2021-11-29 Mon 10:14]
+:ID:       3f00e540-59f1-432a-9b4e-24388ffb250f
+:END:
+
+* org-incremental-mode
+:PROPERTIES:
+:CREATED:  [2022-07-22 Fri 10:46]
+:ID:       60d92f2f-3642-4643-9386-9df0fc992a70
+:END:
+
+#+begin_src emacs-lisp :noweb yes :noweb-ref minor-mode
+ (define-minor-mode org-incremental-mode
+   "Incremental writing for org-mode"
+   :lighter "org-incremental-session"
+   :keymap)
+#+end_src
+
+Check whether buffer is an incrementalised one.
+#+begin_src elisp
+(defun org-incremental-find-value (buffer)
+  "Search the `org-incremental' property in BUFFER and extracts it when found."
+  (with-current-buffer buffer
+    (save-excursion
+      (save-restriction
+        (widen)
+        (goto-char (point-min))
+        (when (re-search-forward (org-make-options-regexp '("org_incremental")) nil :noerror)
+          (match-string 2))))))
+#+end_src
+
+#+begin_src elisp
+(defun org-incremental ()
+  "Start an interactive org-incremental session"
+  (interactive)
+  (if org-incremental-mode
+      (error "Already in an incremental writing session")
+    (org-incremental-mode 1))
+  (org-incremental-view-outstanding)
+  (with-current-buffer "*Org QL View: Incremental Elements*"
+    (org-agenda-switch-to)
+    (org-narrow-to-subtree)))
+
+#+end_src
+
+* Ideas
+:PROPERTIES:
+:CREATED:  [2022-02-21 Mon 12:21]
+:ID:       98206206-e278-4201-ad9c-d5980918c785
+:END:
+
+** TODO [#6] Could write a hook for git + ~org-incremental~ properties :incremental:
+SCHEDULED: <2022-07-31 Sun>
+:PROPERTIES:
+:CREATED:  [2022-02-21 Mon 12:21]
+:ID:       d6c90be8-e27b-4629-81ee-fb8cadbf525a
+:END:
+
+Hook git to commit the text created by turning a heading into an element
+
+** TODO Brainstorm: Edna org-ql blocking incremental search function should filter for in buffer elements first
+:PROPERTIES:
+:CREATED:  [2022-07-18 Mon 22:59]
+:ID:       d99cbb5e-0c71-44d4-ae0d-4d3f395f7374
+:END:
+
+Not sure what I was thinking here
+
+Am I going to use EDNA as part of org-incremental?
+
+** TODO Include org doc in package
+:PROPERTIES:
+:CREATED:  [2022-07-18 Mon 22:59]
+:ID:       c39aa618-f189-4e1c-9192-8f402f3000ae
+:END:
+
+Write help view function (like doom)
+
+** TODO Deincrementalizer
+:PROPERTIES:
+:CREATED:  [2022-08-09 Tue 11:40]
+:ID:       199ceebe-3579-40ff-b62f-38ad54d43dc8
+:END:
+Write a function that /deincrements/ a given headline/element that has a deadline at some mid distance along its sequence.
+
+#+begin_src elisp deincrementalizer
+(defcustom org-incremental-deincrement-p nil
+  "Boolean to switch on the `deincrementalizer' if non-nil"
+  :type 'boolean
+  :group 'org-incremental)
+#+end_src
+
+#+begin_src elisp deincrementalizer
+(defun org-incremental-deincrementalizer ()
+  "Deincrementalize towards a deadline at some optimal distance"
+  (if org-incremental-deincrement-p t))
+#+end_src
+** TODO mail integration
+:PROPERTIES:
+:CREATED:  [2022-08-09 Tue 11:40]
+:ID:       a52386ff-0e62-498f-bc9f-0a0db4bde7d6
+:END:
+** TODO Mercy/spread funcitonality
+:PROPERTIES:
+:CREATED:  [2022-08-09 Tue 11:40]
+:ID:       bf1aaa18-1147-4190-a6a0-6b0d32051cd0
+:END:
+** TODO Statistical analysis functions
+:PROPERTIES:
+:CREATED:  [2022-08-09 Tue 11:40]
+:ID:       35af54c9-7f19-4fa3-b096-2d4b4f969a38
+:END:
+** TODO git and magit integration
+:PROPERTIES:
+:CREATED:  [2022-08-09 Tue 11:40]
+:ID:       859db2df-c980-4543-9898-b149e77f3ab3
+:END:
 
 * Notes
 :PROPERTIES:
