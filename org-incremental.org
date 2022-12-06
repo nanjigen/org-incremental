@@ -208,8 +208,39 @@ Maybe use ~org-roam's~ dual model - mirror header information in a db which can 
 :END:
 
 #+begin_src elisp
+#+begin_src elisp :noweb-ref element-properties
 (defvar org-incremental-scheduling-properties
-  '("LAST_INTERVAL" "TOTAL_REPEATS" "LAST_REVIEWED" "A-FACTOR"))
+  '("A-FACTOR" "LAST_INTERVAL" "NEW_INTERVAL" "TOTAL_REPEATS"))
+
+(defcustom org-incremental-a-factor-property "A_FACTOR"
+  "Property to store the given element's `a-factor'"
+  :type 'string
+  :group 'org-incremental)
+
+(defcustom org-incremental-new-interval-property "NEW_INTERVAL"
+  "Name of property to store the new interval value"
+  :type 'string
+  :group 'org-incremental)
+
+(defcustom org-incremental-old-interval-property "OLD_INTERVAL"
+  "Name of property to store the old interval value"
+  :type 'string
+  :group 'org-incremental)
+
+(defcustom org-incremental-total-repeats-property "TOTAL_REPEATS"
+  "Name of property to store the total number of repeats"
+  :type 'string
+  :group 'org-incremental)
+
+(defcustom org-incremental-created-property "CREATED"
+  "Property displaying the creation time of an entry"
+  :type 'string
+  :group 'org-incremental)
+
+(defcustom org-incremental-last-reviewed-property "LAST_REVIEWED"
+  "Property displaying the creation time of an entry"
+  :type 'string
+  :group 'org-incremental)
 #+end_src
 
 Apply the base algorithm to existing ~:PROPERTIES:~ keys and then write the new interval, moving the previous interval into the "=OLD_INTERVAL=" key.
