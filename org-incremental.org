@@ -207,7 +207,34 @@ Maybe use ~org-roam's~ dual model - mirror header information in a db which can 
 :ID:       e02e162b-2845-4dd2-9e09-b40792302541
 :END:
 
-#+begin_src elisp
+Apply the base algorithm to existing ~:PROPERTIES:~ keys and then write the new interval, moving the previous interval into the "=OLD_INTERVAL=" key.
+The element is rescheduled using ~org~'s internal =org-schedule= function which will be used later for building and sorting a que.
+
+#+begin_src elisp :noweb-ref element rescheduler
+(defun org-incremental-smart-reschedule ()
+  "Collect values from headline at point and apply topic algo"
+  (interactive)
+  (let* ((old-interval (org-incremental-element-current-interval))
+         (a-factor (org-incremental-element-a-factor))
+         (prior-reps (org-incremental-element-total-repeats)))
+    (setq new-interval (org-incremental-determine-next-interval old-interval a-factor))
+    (org-entry-put (point) "NEW_INTERVAL" (prin1-to-string new-interval))
+    (org-schedule nil (time-add (current-time)
+                                (days-to-time
+                                 new-interval)))
+    (org-entry-put (point) "OLD_INTERVAL" (number-to-string old-interval))
+    (org-entry-put (point) "TOTAL_REPEATS" (number-to-string (+ 1 prior-reps)))
+    (org-set-property "LAST_REVIEWED"
+                      (org-incremental-time-to-inactive-org-timestamp (current-time)))))
+#+end_src
+
+Let's break down what the scheduler does:
+
+** Scheduling properties
+:PROPERTIES:
+:CREATED:  [2022-12-06 Tue 11:19]
+:END:
+
 #+begin_src elisp :noweb-ref element-properties
 (defvar org-incremental-scheduling-properties
   '("A-FACTOR" "LAST_INTERVAL" "NEW_INTERVAL" "TOTAL_REPEATS"))
@@ -1117,15 +1144,111 @@ https://github.com/bjsi/incremental-writing/blob/master/src/scheduler.ts
 «license»
 ;;; Code:
 
-(require 'org-incremental-core)
+;;;; Requirements
+(require 'cl-lib)
+(require 'org)
+(require 'org-element)
+(require 'org-id)
+(require 'org-ql)
+(require 'org-incremental-scheduler)
+(require 'org-incremental-simple)
+
+;;;; Constants
+
 #+end_src
 
-** org-incremental/org-incremental-core.el
-:PROPERTIES:
-:CREATED:  [2021-09-08 Wed 21:57]
-:ID:       c84e5ad7-9be6-4083-bfec-ae662ceb0005
-:END:
-#+begin_src elisp :mkdirp yes :noweb yes :tangle org-incremental-core.el
+Customizations
+#+begin_src elisp :mkdirp yes :noweb yes :tangle org-incremental.el
+(defgroup org-incremental nil
+  "Settings for incremental writing in org."
+  :group 'external
+  :group 'text)
+
+«a-factor value»
+#+end_src
+
+Prompt selections for saving and committing after sessions.
+#+begin_src elisp :mkdirp yes :noweb yes :tangle org-incremental.el
+(defcustom org-incremental-save-buffers-after-writing-sessions-p nil
+  "If non-nil, prompt to save all modified buffers when a session ends."
+  :group 'org-incremental
+  :type 'boolean)
+#+end_src
+
+#+begin_src elisp :mkdirp yes :noweb yes :tangle org-incremental.el
+(defcustom org-incremental-commit-after-writing-sessions-p nil
+  "If non-nil, prompt to save all modified buffers when a session ends."
+  :group 'org-incremental
+  :type 'boolean)
+#+end_src
+
+#+begin_src elisp :mkdirp yes :noweb yes :tangle org-incremental.el
+(defcustom org-incremental-narrow-visibility 'minimal
+  "Visibility of the current heading during review.
+See `org-show-set-visibility' for possible values"
+  :type 'symbol
+  :group 'org-incremental
+  :options '(ancestors lineage minimal local tree canonical))
+#+end_src
+
+#+begin_src elisp :mkdirp yes :noweb yes :tangle org-incremental.el
+«element-options»
+
+«element-properties»
+
+;; Mode
+«minor-mode»
+
+;;; Elements
+«element-properties»
+
+;; Initialize elements
+«element-creation-functions»
+
+;; Check elements
+«element-checks»
+
+;; Check elements
+«element-stats»
+
+;; Priority
+«priority-system»
+
+;; Queue
+«queue-views»
+
+«queue-goto-functions»
+
+;;; Footer
+
+(provide 'org-incremental)
+
+;;; org-incremental.el ends here
+#+end_src
+
+** org-incremental-simple.el
+
+#+begin_src elisp :mkdirp yes :noweb yes :tangle org-incremental-simple.el
+;;; org-incremental-simple.el --- Incremental Writing System for org-mode -*- lexical-binding: t; -*-
+
+;;;Commentary
+
+;;; Code:
+(require 'org)
+(require 'org-ql)
+(require 'org-brain)
+
+«simple-configurations»
+
+«view-simple»
+
+«simple-reschedule»
+
+«simple-queue-goto-functions»
+
+(provide 'org-incremental-simple)
+
+;;; org-incremental.el ends here
 #+end_src
 
 ** org-incremental/org-incremental-scheduler.el
@@ -1138,6 +1261,17 @@ https://github.com/bjsi/incremental-writing/blob/master/src/scheduler.ts
 ;;; org-incremental-scheduler.el --- Incremental Writing System for org-mode -*- lexical-binding: t; -*-
 «license»
 
+;;; Code
+
+«spacing algo»
+
+«element rescheduler»
+
+;;; Footer
+
+(provide 'org-incremental-scheduler)
+
+;;; org-incremental-scheduler.el ends here
 #+end_src
 
 ** org-incremental/org-incremental-hydra.el
@@ -1167,6 +1301,7 @@ https://github.com/bjsi/incremental-writing/blob/master/src/scheduler.ts
 :CREATED:  [2021-08-17 Tue 22:49]
 :ID:       e99d9699-e0df-4736-b63f-cb6a9ced3142
 :END:
+
 # Local Variables:
 # org-babel-noweb-wrap-start: "«"
 # org-babel-noweb-wrap-end: "»"
