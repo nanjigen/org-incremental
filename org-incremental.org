@@ -183,6 +183,16 @@ Uses: (Interval=OldInterval*AFactor)"
 #+end_src
 
 ** TODO [#2] Store element data externally?                         :incremental:
+This can be compared to a geometric sequencer:
+
+#+begin_src elisp
+(defun org-incremental-geometric (a r n)
+  "Take the first term `a' and multiply by the common ratio `r'
+To produce `n'th value in a sequence"
+  (while (> n 1) ;; TODO test that `r' is not 0
+    (* a (expt r (1- n)))))
+#+end_src
+
 SCHEDULED: <2022-07-31 Sun>
 :PROPERTIES:
 :CREATED:  [2021-11-30 Tue 18:58]
