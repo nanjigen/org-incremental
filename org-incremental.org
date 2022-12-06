@@ -243,27 +243,7 @@ Maybe use ~org-roam's~ dual model - mirror header information in a db which can 
   :group 'org-incremental)
 #+end_src
 
-Apply the base algorithm to existing ~:PROPERTIES:~ keys and then write the new interval, moving the previous interval into the "=OLD_INTERVAL=" key.
-The element is rescheduled using ~org~'s internal =org-schedule= function which will be used later for building and sorting a que.
-
-#+begin_src elisp :noweb-ref element rescheduler
-(defun org-incremental-smart-reschedule ()
-  "Collect values from headline at point and apply topic algo"
-  (interactive)
-  (let* ((old-interval (org-incremental-element-current-interval))
-         (a-factor (org-incremental-element-a-factor))
-         (prior-reps (org-incremental-element-total-repeats)))
-    (setq new-interval (org-incremental-determine-next-interval old-interval a-factor))
-    (org-entry-put (point) "NEW_INTERVAL" (prin1-to-string new-interval))
-    (org-schedule nil (time-add (current-time)
-                                (days-to-time
-                                 new-interval)))
-    (org-entry-put (point) "OLD_INTERVAL" (number-to-string old-interval))
-    (org-entry-put (point) "TOTAL_REPEATS" (number-to-string (+ 1 prior-reps)))
-    (org-set-property "LAST_REVIEWED"
-                      (org-incremental-time-to-inactive-org-timestamp (current-time)))))
-#+end_src
-
+Convert timestamp to org-mode
 #+begin_src elisp :noweb-ref element rescheduler
 (defun org-incremental-time-to-inactive-org-timestamp (time)
   "Convert TIME into org-mode timestamp."
@@ -271,6 +251,10 @@ The element is rescheduled using ~org~'s internal =org-schedule= function which 
    (concat "[" (substring (cdr org-time-stamp-formats) 1 -1) "]")
    time))
 #+end_src
+
+** NEXT Next-review date
+
+Lifted from ~org-drill~. Let's use this as a base to calculate an estimate of the next review for the current item.
 
 #+begin_src elisp
 (defun org-drill-hypothetical-next-review-date (quality)
