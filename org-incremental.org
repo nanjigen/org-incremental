@@ -51,6 +51,19 @@ Woz [[http://help.supermemo.org/wiki/Creativity_and_problem_solving_in_SuperMemo
 
 The above relates to the granularity of articles written using IW lending itself to IR as extracts tend to be discrete. In the context of incremental literate programming, I believe the contextualisation provided by prose encapsulated in subheadings offer these same advantages while also then allowing us to use the spacing effect over blocks of code. Org-mode's narrowing and widening features further help to constrain or expand context in the flow of IW.
 
+** NEXT Getting started
+:PROPERTIES:
+:CREATED:  [2022-07-22 Fri 11:21]
+:ID:       141e0838-84a7-4f35-90b3-9ec544c98119
+:END:
+
+Example configuration:
+
+#+begin_src elisp
+(use-package org-incremental
+  :config
+  (setq org-incremental-todo-keywords '("NEXT")))
+#+end_src
 
 * Topic spacing algorithm
 :PROPERTIES:
