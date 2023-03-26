@@ -65,8 +65,8 @@ The "spacing effect" is a psychological phenomenon that refers to the tendency f
 
 Example configuration:
 
-#+begin_src elisp
-(use-package org-incremental
+#+begin_src elisp :eval no
+(use-package! org-incremental
   :config
   (setq org-incremental-todo-keywords '("NEXT")))
 #+end_src
@@ -79,9 +79,9 @@ Example configuration:
 
 In short, the basic algo for spacing topics is here:
 
-#+begin_src example
+#+begin_example
 (Interval=OldInterval*AFActor)
-#+end_src
+#+end_example
 
 - The first metric is self explanatory, but ~A-factor~ [fn:1] (standing for /absolute difficulty factor/) is more complicated in that it is used in older versions (<SM18) of Supermemo to represent element difficulty. It is still used for topics but not items in the current version.
 
@@ -96,7 +96,7 @@ The base value for ~A-factor~ in Supermemo is =2=, and so in essence the algo is
 
 As review spacings this is a simple geometric sequence ($x_n=ar^{(n-1)$) with =2= as the common ratio:
 
-#+begin_src lua :noweb yes :noweb-ref geometric sequence lua :results output
+#+begin_src lua :noweb yes :noweb-ref geometric sequence lua :results silent
 local sequence = {}
 function GeoSeq (a, r, n)
    for i = 1, n do
@@ -115,11 +115,9 @@ function print_seq (a, r, n)
 end
 #+end_src
 
-#+RESULTS:
-
-#+begin_src lua :noweb yes :results output pp
+#+begin_src lua :noweb yes :var a_factor=(eval 'a-factor) :results output pp
 «geometric sequence lua»
-print_seq(1, 2, 5)
+print_seq(1, a_factor, 5)
 #+end_src
 
 #+RESULTS:
@@ -131,7 +129,7 @@ print_seq(1, 2, 5)
 
 #+NAME: geo-progression
 #+HEADER: :headers '("\\usepackage{tikz}" "\\usepackage{luacode}")
-#+BEGIN_SRC latex :results graphics file :file img/progression.png :noweb yes :tangle test.tex
+#+BEGIN_SRC latex :results graphics file :file img/progression.png :noweb yes
 % \pgfsetxvec{\pgfpoint{1.5cm}{0cm}}
 \begin{luacode}
   «geometric sequence lua»
@@ -180,7 +178,7 @@ Instead of re-implementing a geometric sequence directly, we'll copy SM's simple
 In the functional style the interval determining algorithm:
 - We use =round= here because human work days are measured in real days, which means we have a full circadian cycle between reps.
 
-#+begin_src elisp :noweb-ref spacing algo
+#+begin_src elisp :noweb-ref spacing algo :results silent
 (defun org-incremental-determine-next-interval (old-interval a-factor)
   "Calcuate new interval for current headline.
 Uses: (Interval=OldInterval*AFactor)"
@@ -191,7 +189,7 @@ Uses: (Interval=OldInterval*AFactor)"
 ** TODO [#2] Store element data externally?                         :incremental:
 This can be compared to a geometric sequencer:
 
-#+begin_src elisp
+#+begin_src elisp :eval no
 (defun org-incremental-geometric (a r n)
   "Take the first term `a' and multiply by the common ratio `r'
 To produce `n'th value in a sequence"
@@ -216,7 +214,7 @@ Maybe use ~org-roam's~ dual model - mirror header information in a db which can 
 Apply the base algorithm to existing ~:PROPERTIES:~ keys and then write the new interval, moving the previous interval into the "=OLD_INTERVAL=" key.
 The element is rescheduled using ~org~'s internal =org-schedule= function which will be used later for building and sorting a que.
 
-#+begin_src elisp :noweb-ref element rescheduler
+#+begin_src elisp :noweb-ref element rescheduler :results silent
 (defun org-incremental-smart-reschedule ()
   "Collect values from headline at point and apply topic algo"
   (interactive)
@@ -241,43 +239,47 @@ Let's break down what the scheduler does:
 :CREATED:  [2022-12-06 Tue 11:19]
 :END:
 
-#+begin_src elisp :noweb-ref element-properties
+#+begin_src elisp :noweb-ref element-properties :results silent
 (defvar org-incremental-scheduling-properties
   '("A-FACTOR" "LAST_INTERVAL" "NEW_INTERVAL" "TOTAL_REPEATS"))
 
+(defvar org-incremental-current-element-uuid nil)
+
+(defvar org-incremental-previous-element-uuid nil)
+
 (defcustom org-incremental-a-factor-property "A_FACTOR"
-  "Property to store the given element's `a-factor'"
+  "Property to store the given element's `a-factor'."
   :type 'string
   :group 'org-incremental)
 
 (defcustom org-incremental-new-interval-property "NEW_INTERVAL"
-  "Name of property to store the new interval value"
+  "Name of property to store the new interval value."
   :type 'string
   :group 'org-incremental)
 
 (defcustom org-incremental-old-interval-property "OLD_INTERVAL"
-  "Name of property to store the old interval value"
+  "Name of property to store the old interval value."
   :type 'string
   :group 'org-incremental)
 
 (defcustom org-incremental-total-repeats-property "TOTAL_REPEATS"
-  "Name of property to store the total number of repeats"
+  "Name of property to store the total number of repeats."
   :type 'string
   :group 'org-incremental)
 
 (defcustom org-incremental-created-property "CREATED"
-  "Property displaying the creation time of an entry"
+  "Property displaying the creation time of an entry."
   :type 'string
   :group 'org-incremental)
 
 (defcustom org-incremental-last-reviewed-property "LAST_REVIEWED"
-  "Property displaying the creation time of an entry"
+  "Property displaying the creation time of an entry."
   :type 'string
   :group 'org-incremental)
 #+end_src
 
 Convert timestamp to org-mode
-#+begin_src elisp :noweb-ref element rescheduler
+#+begin_src elisp :noweb-ref element rescheduler :results silent
 (defun org-incremental-time-to-inactive-org-timestamp (time)
   "Convert TIME into org-mode timestamp."
   (format-time-string
@@ -289,7 +291,7 @@ Convert timestamp to org-mode
 
 Lifted from ~org-drill~. Let's use this as a base to calculate an estimate of the next review for the current item.
 
-#+begin_src elisp
+#+begin_src elisp :eval no :results silent
 (defun org-drill-hypothetical-next-review-date (quality)
   "Returns an integer representing the number of days into the future
 that the current item would be scheduled, based on a recall quality
@@ -343,15 +345,16 @@ Much of this is refactored code lifted from [[https://gitlab.com/phillord/org-dr
 
 Headlines are considered 'elements' when tagged with the =org-incremental-element-tag=:
 
-#+begin_src elisp :noweb-ref element-options
+#+begin_src elisp :noweb-ref element-options :results silent
 (defcustom org-incremental-element-tag "incremental"
   "Tag for marking headlines as incremental writing elements."
   :type 'string
   :group 'org-incremental)
+
 #+end_src
 
 And are drawn from the customizable list of directories:
-#+begin_src elisp :noweb-ref element-options
+#+begin_src elisp :noweb-ref element-options :results silent
 (defcustom org-incremental-directories (org-agenda-files)
   "Files to searched for elements"
   :type 'string
@@ -360,7 +363,7 @@ And are drawn from the customizable list of directories:
 
 If wanted, we can further refine our list of actionable candidates by specifying a TODO keyword(s) list:
 
-#+begin_src elisp :noweb-ref element-options
+#+begin_src elisp :noweb-ref element-options :results silent
 (defcustom org-incremental-todo-keywords nil
   "If non-nil, supply list as viable TODO keyword(s)
 to consider as rep-able `org-incremental' entries"
@@ -380,19 +383,21 @@ to consider as rep-able `org-incremental' entries"
 :END:
 
 Here we perform various checks over the element in question
-#+begin_src elisp :noweb-ref element-checks
+#+begin_src elisp :noweb-ref element-checks :results silent
 (defun org-incremental-entry-p ()
   "Check if the current heading is an incrementalised element."
   (member org-incremental-element-tag (org-get-tags nil 'local)))
+
 #+end_src
 
-#+begin_src elisp :noweb-ref element-checks
+#+begin_src elisp :noweb-ref element-checks :results silent
 (defun org-incremental-operable-entry-p (marker)
   "Is MARKER, or the point, in an operable TODO?"
     (member (org-get-todo-state) org-incremental-todo-keywords))
+
 #+end_src
 
-#+begin_src elisp :noweb-ref element-checks
+#+begin_src elisp :noweb-ref element-checks :results silent
 (defun org-incremental-entry-new-p ()
   "Return non-nil if the entry at point is new."
   (and (org-incremental-entry-p)
@@ -401,7 +406,7 @@ Here we perform various checks over the element in question
 #+end_src
 
 Shouldn't this be using UUID's? What constitutes =marker=?
-#+begin_src elisp
+#+begin_src elisp :results silent
 (defun org-incremental-goto-entry (marker)
   "Switch to the buffer and position of MARKER."
   (switch-to-buffer (marker-buffer marker))
@@ -414,7 +419,7 @@ Shouldn't this be using UUID's? What constitutes =marker=?
 :ID:       72ca6a31-4fe7-45ae-aba2-2d68711693a0
 :END:
 
-#+begin_src elisp :noweb-ref element-creation-functions
+#+begin_src elisp :noweb-ref element-creation-functions :results silent
 (defun org-incremental--add-tag (tag)
   "Add TAG to the heading at point."
   (org-set-tags
@@ -431,7 +436,7 @@ Shouldn't this be using UUID's? What constitutes =marker=?
 
 The below function is used to create an incrementalized headline. The tagging lets us know that it should be scheduled.
 
-#+begin_src elisp :noweb-ref element-creation-functions
+#+begin_src elisp :noweb-ref element-creation-functions :results silent
 (defun org-incremental--init-element ()
   "Initialize the current headline as a topic."
   (if (org-incremental-entry-p)
@@ -460,9 +465,9 @@ If we use the =#+org_incremental: t= buffer option perhaps we can steal ~org-aut
 :ID:       3d66a38f-e251-4e81-aeb1-8abdd41c770b
 :END:
 
-Bring in some functionality for interacting with the ~:PROPERTIES:~ drawer.
+Bring in some functionality for interacting with data stored the ~:PROPERTIES:~ drawer.
 
-#+begin_src elisp :noweb-ref element-stats
+#+begin_src elisp :noweb-ref element-stats :results silent
 (defun org-incremental-element-old-interval (&optional default)
   "Return previous interval for element at point."
   (let ((val (org-entry-get (point) "OLD_INTERVAL")))
@@ -493,7 +498,7 @@ Bring in some functionality for interacting with the ~:PROPERTIES:~ drawer.
 
 #+end_src
 
-#+begin_src elisp :noweb-ref element-stats
+#+begin_src elisp :noweb-ref element-stats :results silent
 (defun org-incremental-get-element-data ()
   "Returns a list of 3 elements, containing all the stored recall
   data for the element at point:
@@ -525,7 +530,7 @@ Bring in some functionality for interacting with the ~:PROPERTIES:~ drawer.
       (list 0 0 0 0 nil nil)))))
 #+end_src
 
-#+begin_src elisp
+#+begin_src elisp :results silent
 (defun org-incremental-days-since-last-review ()
   "Nil means a last review date has not yet been stored for
 the element.
@@ -620,7 +625,7 @@ Inherit from custom priority.
 (org-priority org-incremental-priority-default)
 #+end_src
 
-#+begin_src elisp :noweb-ref priority-system
+#+begin_src elisp :noweb-ref priority-system :results silent
 (defcustom org-incremental-default-priority 'org-default-priority ;; TODO how to make this use system defaults?
   "Use a custom set of default priorities, ")
 
@@ -657,12 +662,12 @@ Experimenting with local
 #+end_src
 
 This might be useful for setting whether a created subtree implicitly inherits a parent priority (via cookies), inherits it explicitly (the priority is set textually) or via a custom function
-#+begin_src elisp :noweb-ref priority-system
+#+begin_src elisp :noweb-ref priority-system :results silent
 (defcustom org-incremental-priority-inheret 'default
   "Set how priorities are inherited amongst subtrees")
 #+end_src
 
-#+begin_src elisp :noweb yes :noweb-ref priority-system
+#+begin_src elisp :noweb yes :noweb-ref priority-system :results silent
 (defcustom org-incremental-prompt-for-priority-p nil
   "If non-nil, prompt to select headline priority at element creation."
   :group 'org-incremental
@@ -717,7 +722,9 @@ SCHEDULED: <2022-08-20 Sat>
 :NEW_INTERVAL: 1
 :A_FACTOR: 2.0
 :END:
-#+begin_src elisp :noweb-ref queue-views
+
+We can =pop= into the list while intersession, otherwise if out of session then perform search. We're searching the ~:LAST_REVIEWED:~ property.
+#+begin_src elisp :noweb-ref queue-views :results silent
 (defun org-incremental-view-completed ()
   "List elements repped today via a `org-ql' search"
   (interactive)
@@ -729,7 +736,8 @@ SCHEDULED: <2022-08-20 Sat>
       :title "Incremental Elements"))
 #+end_src
 
-#+begin_src elisp :results no
+Testing blocks
+#+begin_src elisp :eval no :results silent
 (org-ql-block org-incremental-directories
   '(and (tags org-incremental-element-tag)
         (todo "NEXT"))
@@ -738,7 +746,7 @@ SCHEDULED: <2022-08-20 Sat>
 #+end_src
 
 Some function to introduce noise into the schedule listing
-#+begin_src elisp
+#+begin_src elisp :results silent
 
 #+end_src
 
@@ -759,6 +767,7 @@ I could maybe do the storing in the =org-incremental-smart-reschedule= function.
 Should deactivated org-incremental-mode in the previous buffer and activate it in the new buffer.
 
 #+begin_src elisp :noweb-ref queue-goto-functions
+#+begin_src elisp :noweb-ref queue-goto-functions :results silent
 (defun org-incremental-goto-next ()
   "Rep and go to next outstanding element via a `org-ql' search"
   (interactive)
@@ -777,7 +786,7 @@ Should deactivated org-incremental-mode in the previous buffer and activate it i
 #+end_src
 
 Go back to recently completed via the =org-incremental-view-recent= function
-#+begin_src elisp :noweb-ref queue-goto-functions
+#+begin_src elisp :noweb-ref queue-goto-functions :results silent
 (defun org-incremental-goto-previous ()
   "Rep and go to next outstanding element via a `org-ql' search"
   (interactive)
@@ -790,10 +799,10 @@ Go back to recently completed via the =org-incremental-view-recent= function
           (org-agenda-switch-to)
           (org-narrow-to-subtree)))
     (error "Not in incremental session")))
+
 #+end_src
 
-Go back to recently completed by accessing ~org-incremental-org-last-reviewed-property~
-#+begin_src elisp :results no
+#+begin_src elisp :results silent
 (defun org-incremental-view-recent ()
   "List recently reviewed elements via a `org-ql' search"
   (interactive)
@@ -827,9 +836,9 @@ Go back to recently completed by accessing ~org-incremental-org-last-reviewed-pr
       (org-incremental-simple-reschedule)
       (org-ql-view-refresh))))
 
+#+begin_src elisp :noweb-ref simple-queue-goto-functions :results silent
 (defun org-incremental-org-brain-agenda ()
   "Pop org-brain visualise from agenda."
-  (with-current-buffer "*Org QL View: Training*"
     (let* ((marker (org-get-at-bol 'org-marker))
            (id-from-marker (org-id-get marker))
            (entry-from-id (org-brain-entry-from-id id-from-marker)))
@@ -876,7 +885,7 @@ Things we might want to store:
 
 Let's have this as an optional user-defined setting so as not to interfere with individual workflows:
 
-#+begin_src elisp
+#+begin_src elisp :results silent
 (defcustom org-incremental-store-view-p nil
   "If non-nil store the current window layout to the current headline"
   :type 'boolean
@@ -921,7 +930,7 @@ https://github.com/emacs-mirror/emacs/blob/master/lisp/international/emoji.el
 https://github.com/magit/transient
 https://github.com/magit/transient/wiki/Developer-Quick-Start-Guide
 
-#+begin_src elisp
+#+begin_src elisp :results silent
 (transient-define-prefix transient-toys-hello ()
   "Say hello"
    [("h" "hello" (lambda () (interactive) (message "hello")))])
@@ -961,7 +970,7 @@ https://github.com/sp1ff/elfeed-score
 :ID:       60d92f2f-3642-4643-9386-9df0fc992a70
 :END:
 
-#+begin_src emacs-lisp :noweb yes :noweb-ref minor-mode
+#+begin_src emacs-lisp :noweb yes :noweb-ref minor-mode :results silent
  (define-minor-mode org-incremental-mode
    "Incremental writing for org-mode"
    :lighter "org-incremental-session"
@@ -969,7 +978,7 @@ https://github.com/sp1ff/elfeed-score
 #+end_src
 
 Check whether buffer is an incrementalised one.
-#+begin_src elisp
+#+begin_src elisp :results silent
 (defun org-incremental-find-value (buffer)
   "Search the `org-incremental' property in BUFFER and extracts it when found."
   (with-current-buffer buffer
@@ -981,7 +990,7 @@ Check whether buffer is an incrementalised one.
           (match-string 2))))))
 #+end_src
 
-#+begin_src elisp
+#+begin_src elisp :results silent
 (defun org-incremental ()
   "Start an interactive org-incremental session"
   (interactive)
@@ -1035,14 +1044,14 @@ Write help view function (like doom)
 :END:
 Write a function that /deincrements/ a given headline/element that has a deadline at some mid distance along its sequence.
 
-#+begin_src elisp deincrementalizer
+#+begin_src elisp :noweb-ref deincrementalizer :results silent
 (defcustom org-incremental-deincrement-p nil
   "Boolean to switch on the `deincrementalizer' if non-nil"
   :type 'boolean
   :group 'org-incremental)
 #+end_src
 
-#+begin_src elisp deincrementalizer
+#+begin_src elisp :noweb-ref deincrementalizer :results silent
 (defun org-incremental-deincrementalizer ()
   "Deincrementalize towards a deadline at some optimal distance"
   (if org-incremental-deincrement-p t))
@@ -1124,7 +1133,7 @@ Other implementations:
 :ID:       0bbb98b5-df68-41d9-a16d-54099acb3d0f
 :END:
 
-#+begin_src elisp :mkdirp yes :noweb yes :noweb-ref license
+#+begin_src elisp :mkdirp yes :noweb yes :noweb-ref license :results silent
 ;;; Header:
 
 ;; Author: Daniel Otto
@@ -1174,7 +1183,7 @@ Other implementations:
 #+end_src
 
 Customizations
-#+begin_src elisp :mkdirp yes :noweb yes :tangle org-incremental.el
+#+begin_src elisp :mkdirp yes :noweb yes :tangle org-incremental.el :results silent
 (defgroup org-incremental nil
   "Settings for incremental writing in org."
   :group 'external
@@ -1184,21 +1193,21 @@ Customizations
 #+end_src
 
 Prompt selections for saving and committing after sessions.
-#+begin_src elisp :mkdirp yes :noweb yes :tangle org-incremental.el
+#+begin_src elisp :mkdirp yes :noweb yes :tangle org-incremental.el :results silent
 (defcustom org-incremental-save-buffers-after-writing-sessions-p nil
   "If non-nil, prompt to save all modified buffers when a session ends."
   :group 'org-incremental
   :type 'boolean)
 #+end_src
 
-#+begin_src elisp :mkdirp yes :noweb yes :tangle org-incremental.el
+#+begin_src elisp :mkdirp yes :noweb yes :tangle org-incremental.el :results silent
 (defcustom org-incremental-commit-after-writing-sessions-p nil
   "If non-nil, prompt to save all modified buffers when a session ends."
   :group 'org-incremental
   :type 'boolean)
 #+end_src
 
-#+begin_src elisp :mkdirp yes :noweb yes :tangle org-incremental.el
+#+begin_src elisp :mkdirp yes :noweb yes :tangle org-incremental.el :results silent
 (defcustom org-incremental-narrow-visibility 'minimal
   "Visibility of the current heading during review.
 See `org-show-set-visibility' for possible values"
@@ -1244,7 +1253,7 @@ See `org-show-set-visibility' for possible values"
 
 ** org-incremental-simple.el
 
-#+begin_src elisp :mkdirp yes :noweb yes :tangle org-incremental-simple.el
+#+begin_src elisp :mkdirp yes :noweb yes :tangle org-incremental-simple.el :results silent
 ;;; org-incremental-simple.el --- Incremental Writing System for org-mode -*- lexical-binding: t; -*-
 
 ;;;Commentary
@@ -1273,7 +1282,7 @@ See `org-show-set-visibility' for possible values"
 :ID:       b135bb8c-53c6-4fe2-b78a-22d7f3e89511
 :END:
 
-#+begin_src elisp :mkdirp yes :noweb yes :tangle org-incremental-scheduler.el
+#+begin_src elisp :mkdirp yes :noweb yes :tangle org-incremental-scheduler.el :results silent
 ;;; org-incremental-scheduler.el --- Incremental Writing System for org-mode -*- lexical-binding: t; -*-
 «license»
 
@@ -1296,7 +1305,7 @@ See `org-show-set-visibility' for possible values"
 :ID:       c107d6a7-0639-427c-ae3e-2030d2173936
 :END:
 
-#+begin_src elisp :mkdirp yes :noweb yes :tangle org-incremental-hydra.el
+#+begin_src elisp :mkdirp yes :noweb yes :tangle org-incremental-hydra.el :results silent
 ;;; org-incremental-hdyra.el --- Incremental Writing System for org-mode -*- lexical-binding: t; -*-
 «license»
 #+end_src
@@ -1307,7 +1316,7 @@ See `org-show-set-visibility' for possible values"
 :ID:       dd022a74-bfc0-4ce0-9b38-f9be59be2375
 :END:
 
-#+begin_src elisp :mkdirp yes :noweb yes :tangle org-incremental-analysis.el
+#+begin_src elisp :mkdirp yes :noweb yes :tangle org-incremental-analysis.el :results silent
 ;;; org-incremental-analysis.el --- Incremental Writing System for org-mode -*- lexical-binding: t; -*-
 «license»
 #+end_src
