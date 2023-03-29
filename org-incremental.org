@@ -811,6 +811,20 @@ The Supermemo documentation suggests something like a 2 hour shift past midnight
 
 #+end_src
 
+This will be tested against a current session timestamp for the most recent session run.
+#+begin_src elisp :noweb-ref midnight-shift-vars :results silent
+(defvar org-incremental-current-shift nil
+  "Empty time slot to fill with last run `org-incremental-session'.")
+
+#+end_src
+
+Set previous shift?
+#+begin_src elisp :noweb-ref midnight-shift-funcs :results silent
+(defun org-incremental-set-current-shift ()
+  "Store the shift of the current session."
+  (setq org-incremental-current-shift (decode-time)))
+#+end_src
+
   "List outstanding elements via a `org-ql' search"
   (interactive)
   (org-ql-search org-incremental-directories
