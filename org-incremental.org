@@ -840,6 +840,32 @@ is beyond the MIDNIGHT-SHIFT.
 
 #+end_src
 
+*** Outstanding que
+:PROPERTIES:
+:CREATED:  [2023-03-22 Wed 19:06]
+:ID:       4007ad6a-7f08-4836-9f80-2081be991071
+:END:
+The =org-ql-select= should be its own function. Maybe run as async in the function or call it async in the below function.
+
+I should write some kind of while loop that messages to the user that the que is being constructed.
+
+This should actually be able to construct a que for any given day?
+
+Where am I running the test for current-shift?
+#+begin_src elisp :results silent
+(defun org-incremental-outstanding-que ()
+  "Construct or check today's outstanding que."
+  (interactive)
+  (if (or (null org-incremental-current-shift)
+          (org-incremental-calculate-midnight-drift org-incremental-current-shift org-incremental-midnight-shift)) t
+  (let* ((query org-incremental-query)
+         (results (org-ql-select org-incremental-directories query
+                    :action 'element-with-markers
+                    :sort '(date priority))))
+    (setq org-incremental-outstanding-que results)))
+(eval 'org-incremental-outstanding-que))
+#+end_src
+
   "List outstanding elements via a `org-ql' search"
   (interactive)
   (org-ql-search org-incremental-directories
