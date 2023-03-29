@@ -690,7 +690,22 @@ See ~org-priority~
 :ID:       35274ebc-b6d0-41e4-bf68-7749b96f34d2
 :END:
 
-Here we create a test function to bring up an agenda-like view of tasks. Due (and overdue) elements from the ~org-todo-keywords-for-agenda~ list with the =incremental= tag are sorted by priority and date.
+To emulate Supermemo's outstanding que, we need to query due (and overdue) items sourced from the ~org-incremental-directories~ with the ~org-todo-keywords-for-agenda~ list and the =incremental= tag in order to bring up an =agenda=-like view of tasks.
+
+Results are sorted by priority and date:
+
+#+begin_src elisp :noweb-ref que-options :results silent
+(defcustom org-incremental-query
+  '(or (and (tags org-incremental-element-tag)
+            (todo org-incremental-todo-keywords)
+            (scheduled :to today))
+       (and (tags org-incremental-element-tag)
+            (todo org-incremental-todo-keywords)
+            (not (scheduled :from today))))
+  "Query to be run by `org-ql'."
+  :type 'sexp ;; TODO should this be 'symbol?
+  :group 'org-incremental)
+#+end_src
 
 It is currently possible to use =org-incremental-element-tag= as the variable for the tags parameter in the below search, but attempting to use the =org-incremental-todo-keywords= variable for a todo list throws an ~rx~ error.
 
