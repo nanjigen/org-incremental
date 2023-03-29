@@ -796,6 +796,21 @@ We can then calculate the midnight time for any given day using the =decoded=tim
 
 #+end_src
 
+The Supermemo documentation suggests something like a 2 hour shift past midnight.
+
+#+name: midnight shift
+#+begin_src elisp :noweb-ref midnight-shift-options :results silent
+(defcustom org-incremental-midnight-shift "02:00:00"
+  "Time passed when `org-incremental' considers a new day.
+
+    Accepts time in a ISO 8601 time string, or something like
+    the RFC 822 date-time, as per the `parse-time-string' function."
+
+  :type 'string
+  :group 'org-incremental)
+
+#+end_src
+
   "List outstanding elements via a `org-ql' search"
   (interactive)
   (org-ql-search org-incremental-directories
