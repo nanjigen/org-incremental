@@ -756,6 +756,29 @@ First an empty variable to store the que as a list with text properties:
 
 #+end_src
 
+*** Midnight shift
+:PROPERTIES:
+:CREATED:  [2023-03-12 Sun 13:07]
+:ID:       acc83d93-e632-499d-aec8-654c547b3d9b
+:END:
+
+The outstanding que shows scheduled items based on the current day, which we determine via [[https://supermemopedia.com/wiki/Midnight_shift][midnight shift]].
+
+As mentioned in the /Topic spacing algorithm/ section, the spacing effect relies on sleep cycles between days to consolidated memory and for the formalization of new ideas. As such, we need a time against which to 'tick over' into the new day so that we can be sure that the algorithm is making the right calculations, and not using stale data.
+
+We run this test as /midnight+midnight shift = a new learning day/.
+
+At first, simply setting the shift time as midnight seems logical. However, in an increasingly 'on' world, we might find ourselves working past midnight. Thus it is likely best to set this somewhere in the middle of your usual sleep, i.e. while your brain is consolidating.
+
+#+name: midnight
+#+begin_src elisp :noweb-ref midnight-shift-options :results silent
+(defvar org-incremental-midnight (make-decoded-time :second 59
+                                                    :minute 59
+                                                    :hour 23)
+  "Canonical midnight")
+
+#+end_src
+
   "List outstanding elements via a `org-ql' search"
   (interactive)
   (org-ql-search org-incremental-directories
