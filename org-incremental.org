@@ -825,6 +825,21 @@ Set previous shift?
   (setq org-incremental-current-shift (decode-time)))
 #+end_src
 
+Here we test for midnight drift
+(SEC MIN HOUR DAY MON YEAR DOW DST TZ)
+#+begin_src elisp :noweb-ref midnight-shift-funcs :results silent
+(defun org-incremental-calculate-midnight-drift (current-shift midnight-shift)
+"Calculate whether the currently run session (CURRENT-SHIFT)
+is beyond the MIDNIGHT-SHIFT.
+
+  `(SEC MIN HOUR DAY MON YEAR DOW DST TZ)'"
+
+(let ((midnight-drift (decoded-time-add (org-incremental-midnight)
+                                        (parse-time-string midnight-shift))))
+  (null (time-less-p current-shift midnight-drift))))
+
+#+end_src
+
   "List outstanding elements via a `org-ql' search"
   (interactive)
   (org-ql-search org-incremental-directories
