@@ -741,6 +741,21 @@ Here we point the above functions + a simple map to an org file included in the 
 #+begin_src elisp :eval yes :results silent
 (ert 'selection-test)
 #+end_src
+
+
+** Constructing the que
+:PROPERTIES:
+:CREATED:  [2023-03-12 Sun 12:08]
+:ID:       f3c73455-6446-4b00-a40d-4c8dd04b08a8
+:END:
+
+First an empty variable to store the que as a list with text properties:
+
+#+begin_src elisp :noweb-ref que-vars :results silent
+(defvar org-incremental-outstanding-que nil)
+
+#+end_src
+
   "List outstanding elements via a `org-ql' search"
   (interactive)
   (org-ql-search org-incremental-directories
