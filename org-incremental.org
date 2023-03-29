@@ -692,8 +692,6 @@ See ~org-priority~
 
 To emulate Supermemo's outstanding que, we need to query due (and overdue) items sourced from the ~org-incremental-directories~ with the ~org-todo-keywords-for-agenda~ list and the =incremental= tag in order to bring up an =agenda=-like view of tasks.
 
-Results are sorted by priority and date:
-
 #+begin_src elisp :noweb-ref que-options :results silent
 (defcustom org-incremental-query
   '(or (and (tags org-incremental-element-tag)
@@ -707,9 +705,16 @@ Results are sorted by priority and date:
   :group 'org-incremental)
 #+end_src
 
-It is currently possible to use =org-incremental-element-tag= as the variable for the tags parameter in the below search, but attempting to use the =org-incremental-todo-keywords= variable for a todo list throws an ~rx~ error.
+In order to ease testing =org-ql-select= is put into its own function.
+Results are sorted by priority and date:
 
-Should the outstanding que show not-yet scheduled items? How does the SM scheduler work?
+#+begin_src elisp :noweb-ref tests :results silent
+(defun org-incremental-selection (dir query)
+  "Run a `org-ql-select' over DIR against the QUERY."
+  (org-ql-select dir query
+    :action 'element-with-markers
+    :sort '(date priority)))
+#+end_src
 
 #+begin_src elisp :noweb-ref queue-views
 (defun org-incremental-view-outstanding ()
