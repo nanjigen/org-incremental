@@ -716,8 +716,31 @@ Results are sorted by priority and date:
     :sort '(date priority)))
 #+end_src
 
-#+begin_src elisp :noweb-ref queue-views
-(defun org-incremental-view-outstanding ()
+We require the use of ='element-with-markers= to be able to build the =agenda= like buffer later on. This calls =org-ql--add-markers= internally, and we use this in our test below.
+
+Here we point the above functions + a simple map to an org file included in the repo to test.
+
+#+begin_src elisp :results silent
+(ert-deftest selection-test ()
+  "Test whether `org-incremental-query' returns the expected que results."
+  (setq-local org-incremental-directories "\./demo.org"
+              org-incremental-todo-keywords org-todo-keywords)
+  (should
+   (let ((inhibit-message t))
+     (equal
+      (org-map-entries
+       (lambda ()
+         (org-ql--add-markers
+          (org-element-headline-parser)))
+       "incremental"
+       (list (eval org-incremental-directories)))
+      (org-incremental-selection org-incremental-directories org-incremental-query)))))
+
+#+end_src
+
+#+begin_src elisp :eval yes :results silent
+(ert 'selection-test)
+#+end_src
   "List outstanding elements via a `org-ql' search"
   (interactive)
   (org-ql-search org-incremental-directories
@@ -1339,6 +1362,20 @@ See `org-show-set-visibility' for possible values"
 #+begin_src elisp :mkdirp yes :noweb yes :tangle org-incremental-analysis.el :results silent
 ;;; org-incremental-analysis.el --- Incremental Writing System for org-mode -*- lexical-binding: t; -*-
 «license»
+#+end_src
+
+** org-incremental/tests.el
+:PROPERTIES:
+:CREATED:  [2023-03-29 Wed 07:43]
+:ID:       a4705e98-3211-4643-b7f3-0bee7236b906
+:END:
+#+begin_src elisp :mkdirp yes :noweb yes :tangle tests/el :results silent
+;;; tests.el --- Incremental Writing System for org-mode -*- lexical-binding: t; -*-
+
+;;; Code
+(require 'ert)
+(require 'buttercup)
+«tests»
 #+end_src
 
 * COMMENT local variables
