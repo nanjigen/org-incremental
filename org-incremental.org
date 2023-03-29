@@ -779,6 +779,23 @@ At first, simply setting the shift time as midnight seems logical. However, in a
 
 #+end_src
 
+We can then calculate the midnight time for any given day using the =decoded=time= suite of functions:
+
+#+begin_src elisp :noweb-ref midnight-shift-funcs :results silent
+(defun org-incremental-midnight ()
+  "Generate midnight time for today."
+  (let* ((current-day (decoded-time-day (decode-time)))
+         (current-month (decoded-time-month (decode-time)))
+         (decoded-day-month (make-decoded-time :second 00
+                                               :minute 00
+                                               :hour 00
+                                               :day current-day
+                                               :month current-month)))
+    (decoded-time-add decoded-day-month
+                      org-incremental-midnight)))
+
+#+end_src
+
   "List outstanding elements via a `org-ql' search"
   (interactive)
   (org-ql-search org-incremental-directories
