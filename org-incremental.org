@@ -41,14 +41,22 @@ Features:
 :ID:       d334935e-79f3-4c5d-a614-61f902e6ecb9
 :END:
 
-Incremental writing is a concept co-developed by Piotr Wozniak and [[https://supermemopedia.com/wiki/How_I_use_creative_elaboration_with_the_help_of_incremental_reading][users of Supermemo]] employing the topic spacing feature to break writing projects into sub-chapters, as a form of creative elaboration.
+Incremental writing is a concept co-developed by Piotr Wozniak and [[https://supermemopedia.com/wiki/How_I_use_creative_elaboration_with_the_help_of_incremental_reading][users of Supermemo]], employing its topic spacing feature to break writing projects into sub-chapters, which are then worked on in an 'incremental fashion', allowing the spacing algorithm to feed a writer these subsections with non-zero intervals between writing sessions - taking advantage of the spacing effect as a form of creative elaboration.
+
+The spacing effect is a well-known psychological phenomenon that suggests that learning is more effective when information is presented over time, rather than all at once. This means that it is better to study or practice a subject in multiple sessions over time, rather than trying to learn everything at the same time (session).
+
+Leveraging the spacing effect in the form of incremental writing allows a writer works on multiple writing projects 'simultaneously', rather than focusing on just one project for an extended period of time.
+
+This approach can help writers overcome writer's block and produce more consistent work. By working on multiple writing projects simultaneously, a writer can take advantage of the spacing effect to improve their learning and memory. For example, if a writer spends a couple of hours working on one project, then switches to another project, then comes back to the first project later, they will be more likely to remember what they wrote and be able to improve on it. This can help them produce better-quality work and avoid getting stuck on just one project.
 
 Woz [[http://help.supermemo.org/wiki/Creativity_and_problem_solving_in_SuperMemo#Incremental_writing][writes]]:
 #+begin_quote
 (Texts)... may be bloated and repetitive, however, with incremental reading, they can be prioritized in a rational way. *Incremental writing leaves the texts highly granular and the flow of thought is jagged*, however ... this is an advantage as all individual articles and subarticles *carry sufficient local context to be read independently*.
 #+end_quote
 
-The above relates to the granularity of articles written using IW lending itself to IR as extracts tend to be discrete. In the context of incremental literate programming, I believe the contextualisation provided by prose encapsulated in subheadings offer these same advantages while also then allowing us to use the spacing effect over blocks of code. Org-mode's narrowing and widening features further help to constrain or expand context in the flow of IW.
+The above relates to the granularity of articles written using IW lending itself to IR as extracts tend to be discrete. In the context of incremental literate programming, I believe the contextualisation provided by prose-around-code, encapsulated in subheadings offer these same advantages while also then allowing us to use the spacing effect over blocks of code. Org-mode's narrowing and widening features further help to constrain or expand context in the flow of IW.
+
+The forgetting effect: ;;TODO try find Wozniak's article about jumping hills
 
 Donald Knuth's "Literate Programming" is a programming methodology that involves combining human-readable text with code in a way that makes the code more understandable and easier to follow. This is accomplished by treating the code as a form of literature, in which the programmer writes prose to explain and document the code, interspersed with the code itself. The resulting "literate programs" are easier to read and understand than traditional programs, which can make them more maintainable and more likely to be used and reused by others. Additionally, the use of literate programming can make the process of writing and maintaining code more enjoyable and rewarding for the programmer, as it allows them to express themselves and their ideas in a more natural and intuitive way. Overall, the benefits of literate programming include improved readability, maintainability, and reusability of code, as well as increased enjoyment and satisfaction for the programmer.
 
