@@ -408,17 +408,32 @@ Here we perform various checks over the element in question
 #+begin_src elisp :noweb-ref element-checks :results silent
 (defun org-incremental-entry-new-p ()
   "Return non-nil if the entry at point is new."
-  (and (org-incremental-entry-p)
        (let ((element-time (org-get-scheduled-time (point))))
-         (null element-time))))
+         (null element-time)))
+
+#+end_src
+
+Notice the need to test if the retrieved value is already a =0=, otherwise the ~org-time-stamp-now~ function fails.
+
+#+begin_src elisp :noweb-ref element-checks :results silent
+(defun org-incremental-entry-repped-today-p ()
+  "Return non-nil if the entry at point was already repped today
+Otherwise return t if the it was repped today or is a new element."
+  (unless t (org-incremental-entry-new-p)
+    (let ((reviewed-time (org-entry-get (point) org-incremental-last-reviewed-property)))
+      (= 0 (org-time-stamp-to-now reviewed-time)))))
+
 #+end_src
 
 Shouldn't this be using UUID's? What constitutes =marker=?
-#+begin_src elisp :results silent
+#+begin_src elisp :noweb-ref element-checks :results silent
 (defun org-incremental-goto-entry (marker)
   "Switch to the buffer and position of MARKER."
   (switch-to-buffer (marker-buffer marker))
   (goto-char marker))
+
+#+end_src
+
 #+end_src
 
 ** Element creation
