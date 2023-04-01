@@ -559,14 +559,12 @@ this should never happen."
 :ID:       7669d568-a905-4adb-b579-d6b5fd0053e3
 :END:
 
-#+begin_src elisp
-(defun org-drill-store-element-data (last-interval repeats failures
-                                                total-repeats meanq
-                                                ease)
+#+begin_src elisp :eval no
+(defun org-incremental-store-element-data (last-interval repeats total-repeats)
   "Stores the given data in the element at point."
   (org-entry-delete (point) "LEARN_DATA")
-  (org-set-property "DRILL_LAST_INTERVAL"
-                    (number-to-string (org-drill-round-float last-interval 4)))
+  (org-set-property "LAST_INTERVAL"
+                    (number-to-string (org-drill-round-float last-interval 4))) ;; TODO refactor
   (org-set-property "TOTAL_REPEATS" (number-to-string total-repeats)))
 
 #+end_src
