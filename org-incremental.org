@@ -1043,10 +1043,10 @@ We can =pop= into the list while intersession, otherwise if out of session then 
   (interactive)
     (org-ql-search org-incremental-directories
       '(and (tags org-incremental-element-tag)
-            (todo "NEXT")
-            (scheduled >= today))
+            (property >= today))
       :sort '(date priority)
       :title "Incremental Elements"))
+
 #+end_src
 
 Testing blocks
