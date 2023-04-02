@@ -1257,10 +1257,11 @@ In this example, the list-subheadings-for-all-branches function takes an org-mod
 :ID:       ec51031f-ca20-4842-89d4-e9bbf7247629
 :END:
 
-** Storing views
+** NEXT Storing views
 :PROPERTIES:
 :CREATED:  [2022-08-21 Sun 13:55]
 :ID:       a7646e02-20ad-4074-827d-aebd07e44349
+:TRIGGER:  chain-find-next(NEXT,from-current,priority-up,effort-down)
 :END:
 
 A nice ability would be saving and storing a particular project layout at a given element. This would allow us to return to working on that headline much faster as all the resources would be made available when it is traversed to in the queue.
@@ -1341,9 +1342,6 @@ https://github.com/magit/transient/wiki/Developer-Quick-Start-Guide
   "Say hello"
    [("h" "hello" (lambda () (interactive) (message "hello")))])
 #+end_src
-
-#+RESULTS:
-| [1 transient-column nil ((1 transient-suffix (:key h :description hello :command transient:transient-toys-hello:hello)))] |
 
 *** NEXT Brainstorm org-incremental-transient functions
 :PROPERTIES:
@@ -1712,8 +1710,8 @@ Other:
 
 ** License
 :PROPERTIES:
-:CREATED:  [2021-09-08 Wed 21:52]
-:ID:       0bbb98b5-df68-41d9-a16d-54099acb3d0f
+:CREATED:  [2023-02-14 Tue 20:22]
+:ID:       3af2fb34-1919-4944-86ec-2a8ba1cbf93c
 :END:
 
 #+begin_src elisp :mkdirp yes :noweb yes :noweb-ref license :results silent
