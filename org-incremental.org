@@ -668,6 +668,15 @@ values as `org-incremental-scope'."
     (message "Done.")))
 #+end_src
 
+** NEXT Archive headlines
+:PROPERTIES:
+:CREATED:  [2022-12-13 Tue 13:01]
+:ID:       3f80b0d8-da09-4742-b078-f17afdf8f843
+:END:
+Functions to more elegantly 'archive' completed headlines.
+
+Currently, when completing a TODO headline, we regenerate it to be placed along the spaced que. However, we need a mechanism to both completed the current item fully so that it is 'DONE', and then be able to archive the element with its repetition data, without actually losing the headline and the literate code contained within.
+
 * Priority system
 :PROPERTIES:
 :CREATED:  [2021-11-29 Mon 13:24]
