@@ -26,8 +26,8 @@ Key functions we would need:
 Features:
 
   + *Incremental literate programming* with org-mode and SM's algorithm!
-  + *Incremental writing of email with ~mu4e~!*
-  + Deadline awareness (modify priority/a-factor/scheduled date based on distance to deadline)
+  + *Incremental writing of email with tools like ~mu4e~!*
+  + *Deadline awareness* (modify priority/a-factor/scheduled date based on distance to deadline)
 
 * Overview
 :PROPERTIES:
@@ -35,10 +35,16 @@ Features:
 :ID:       a981430d-1319-4d5a-b036-c1478fdf7cd4
 :END:
 
-** TODO Why incremental writing?
+** NEXT [#5] Why incremental writing?                            :incremental:
+SCHEDULED: <2023-03-15 Wed>
 :PROPERTIES:
 :CREATED:  [2021-07-26 Mon 17:42]
 :ID:       d334935e-79f3-4c5d-a614-61f902e6ecb9
+:LAST_REVIEWED: [Y-02-27 Mon 15:%]
+:TOTAL_REPEATS: 4
+:OLD_INTERVAL: 8
+:NEW_INTERVAL: 16
+:A_FACTOR: 2.0
 :END:
 
 Incremental writing is a concept co-developed by Piotr Wozniak and [[https://supermemopedia.com/wiki/How_I_use_creative_elaboration_with_the_help_of_incremental_reading][users of Supermemo]], employing its topic spacing feature to break writing projects into sub-chapters, which are then worked on in an 'incremental fashion', allowing the spacing algorithm to feed a writer these subsections with non-zero intervals between writing sessions - taking advantage of the spacing effect as a form of creative elaboration.
@@ -65,11 +71,14 @@ It is possible to combine Piotr Wozniak's "Incremental Writing" and Donald Knuth
 The subheadings can help to structure and organize the code, making it more understandable and easier to follow. Additionally, the use of subheadings can make it easier to use the spacing effect to review and retain blocks of code over time. The narrowing and widening features in org-mode can also be used to constrain or expand the context in the flow of incremental writing, further improving the readability and usability of the code. Overall, the combination of incremental writing and literate programming can provide a powerful and effective way to write and maintain complex programs.
 
 The "spacing effect" is a psychological phenomenon that refers to the tendency for information to be more effectively learned and retained when it is presented and reviewed over a series of spaced intervals, rather than being presented and reviewed all at once. In the context of incremental literate programming, the spacing effect can be used to assist with the learning and retention of blocks of code. By breaking the code up into smaller, manageable units and reviewing them over spaced intervals, the programmer can more effectively commit the code to memory and retain their knowledge of it over time. This can make the code easier to understand and work with, as well as making it more likely that the programmer will be able to recall and use the code when needed. Additionally, the use of the spacing effect can help to make the process of learning and working with code more efficient and less overwhelming, as it allows the programmer to focus on smaller amounts of information at a time.
+
 ** NEXT Getting started
 :PROPERTIES:
 :CREATED:  [2022-07-22 Fri 11:21]
 :ID:       141e0838-84a7-4f35-90b3-9ec544c98119
 :END:
+
+Files can be included with a ~#+incremental_writing: t~ header.
 
 Example configuration:
 
@@ -93,16 +102,23 @@ In short, the basic algo for spacing topics is here:
 
 - The first metric is self explanatory, but ~A-factor~ [fn:1] (standing for /absolute difficulty factor/) is more complicated in that it is used in older versions (<SM18) of Supermemo to represent element difficulty. It is still used for topics but not items in the current version.
 
-The base value for ~A-factor~ in Supermemo is =2=, and so in essence the algo is simply a doubling mechanism:
+The base value for ~A-factor~ in Supermemo is =2.0=, and so in essence the algo is simply a doubling mechanism:
 
-#+begin_src elisp :noweb-ref a-factor value
+#+name: a-factor
+#+begin_src elisp :results silent
 (defcustom a-factor 2.0
-  "Base a-factor value as per Supermemo defaults"
+  "Base a-factor value as per Supermemo defaults."
   :type 'float
   :group 'org-incremental)
 #+end_src
 
-As review spacings this is a simple geometric sequence ($x_n=ar^{(n-1)$) with =2= as the common ratio:
+** NEXT Write working latex sequence
+:PROPERTIES:
+:CREATED:  [2022-08-09 Tue 11:40]
+:ID:       61acbe6b-3cc2-42d2-a4f8-b30777f2ddd8
+:TRIGGER:  chain-find-next(NEXT,from-current,priority-up,effort-down)
+:END:
+The review spacings can thus be represented as a simple geometric sequence ($x_n=ar^{(n-1)$) with =2= as the common ratio:
 
 #+begin_src lua :noweb yes :noweb-ref geometric sequence lua :results silent
 local sequence = {}
@@ -192,9 +208,9 @@ In the functional style the interval determining algorithm:
 Uses: (Interval=OldInterval*AFactor)"
   (let ((next-interval (* old-interval a-factor)))
     (round next-interval)))
+
 #+end_src
 
-** TODO [#2] Store element data externally?                         :incremental:
 This can be compared to a geometric sequencer:
 
 #+begin_src elisp :eval no
@@ -205,13 +221,12 @@ To produce `n'th value in a sequence"
     (* a (expt r (1- n)))))
 #+end_src
 
-SCHEDULED: <2022-07-31 Sun>
-:PROPERTIES:
-:CREATED:  [2021-11-30 Tue 18:58]
-:ID:       3e1b81b4-ffb9-4bb2-9106-7cd2ec96fb06
-:END:
+Generate a series:
 
-Maybe use ~org-roam's~ dual model - mirror header information in a db which can be accessed for generating views etc.
+#+begin_src elisp :eval no
+(defun org-incremental-geometric-sequencer ()
+  )
+#+end_src
 
 * Scheduler
 :PROPERTIES:
