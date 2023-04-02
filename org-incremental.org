@@ -1003,15 +1003,15 @@ Some function to introduce noise into the schedule listing
 
 #+end_src
 
-** NEXT [#A] improve incremental goto function                   :incremental:
-SCHEDULED: <2022-11-09 Wed>
+** NEXT [#4] improve incremental goto function                   :incremental:
+SCHEDULED: <2023-03-08 Wed>
 :PROPERTIES:
 :CREATED:  [2022-08-14 Sun 14:34]
 :ID:       a3cefb3e-61c9-4426-8f58-3c677f096cb6
-:LAST_REVIEWED: [2022-11-01 Tue 12:48]
-:TOTAL_REPEATS: 4
-:OLD_INTERVAL: 5
-:NEW_INTERVAL: 8
+:LAST_REVIEWED: [2023-02-14 Tue 19:17]
+:TOTAL_REPEATS: 6
+:OLD_INTERVAL: 13
+:NEW_INTERVAL: 22
 :A_FACTOR: 1.68
 :TRIGGER:  chain-find-next(NEXT,from-current,priority-up,effort-down)
 :END:
@@ -1019,25 +1019,37 @@ maybe save point to go back
 I could maybe do the storing in the =org-incremental-smart-reschedule= function.
 Should deactivated org-incremental-mode in the previous buffer and activate it in the new buffer.
 
-#+begin_src elisp :noweb-ref queue-goto-functions
+This should actually be referencing the first element of the ~org-ql~ list and acting on that so I can goto next from anywhere
+https://github.com/alphapapa/org-ql#listing--acting-on-results
+=org-ql-view--buffer=
 #+begin_src elisp :noweb-ref queue-goto-functions :results silent
 (defun org-incremental-goto-next ()
   "Rep and go to next outstanding element via a `org-ql' search"
   (interactive)
-  (if org-incremental-mode
-      (with-current-buffer (current-buffer)
+  ;; (if org-incremental-mode ;; TODO make mode global
+      (with-current-buffer (current-buffer) ;; TODO Can I make a better test?
       (progn
-        (org-incremental-smart-reschedule)
-        (org-incremental-view-outstanding)
-        (org-incremental-mode 0))
+        (if (org-incremental-entry-repped-today-p) nil
+          (org-incremental-smart-reschedule))
+        (save-buffer)
+        (kill-current-buffer)
+        (org-incremental-view-outstanding))
+        ;; (org-incremental-mode 0)
         ;; (org-ql-view-refresh)
         (with-current-buffer "*Org QL View: Incremental Elements*"
           (org-agenda-switch-to)
           (org-narrow-to-subtree)
-          (org-incremental-mode 1)))
-    (error "Not in incremental session")))
+          ;; (org-incremental-mode 1)
+          ))
+    ;; (error "Not in incremental session"))
+)
 #+end_src
 
+** NEXT goto-previous function
+:PROPERTIES:
+:CREATED:  [2022-12-13 Tue 13:01]
+:ID:       6ba7cc41-6d7b-4ea7-a6f4-1c1a7742116b
+:END:
 Go back to recently completed via the =org-incremental-view-recent= function
 #+begin_src elisp :noweb-ref queue-goto-functions :results silent
 (defun org-incremental-goto-previous ()
@@ -1045,7 +1057,6 @@ Go back to recently completed via the =org-incremental-view-recent= function
   (interactive)
   (if org-incremental-mode
       (progn
-        (org-incremental-smart-reschedule)
         (org-incremental-view-outstanding)
         ;; (org-ql-view-refresh)
         (with-current-buffer "*Org QL View: Incremental Elements*"
@@ -1055,6 +1066,9 @@ Go back to recently completed via the =org-incremental-view-recent= function
 
 #+end_src
 
+Maybe use map-entries?
+Go back to recently completed by accessing ~org-incremental-last-reviewed-property~ and testing for its value being today.
+
 #+begin_src elisp :results silent
 (defun org-incremental-view-recent ()
   "List recently reviewed elements via a `org-ql' search"
@@ -1062,32 +1076,45 @@ Go back to recently completed via the =org-incremental-view-recent= function
   (org-ql-search org-incremental-directories
     '(or (and (tags org-incremental-element-tag)
               (todo "NEXT")
+              (property org-incremental-last-reviewed-property val)
               (scheduled :to today))
          (and (tags org-incremental-element-tag)
               (todo "NEXT")
+              (property org-incremental-last-reviewed-property)
               (not (scheduled :from today))))
     :sort '(date priority)
     :title "Incremental Elements"))
-(org-incremental-org-last-reviewed-property)
+
 #+end_src
+
+*** NEXT Map org-incremental-goto in org-ql view
+:PROPERTIES:
+:TRIGGER:  chain-find-next(NEXT,from-current,priority-up,effort-down)
+:CREATED:  [2022-12-13 Tue 13:01]
+:ID:       8a3b62b8-13e8-4ee6-aaec-9a7084ba7f5b
+:END:
+Enter should go to an element
 
 ** NEXT Write simple goto function
 :PROPERTIES:
 :TRIGGER:  chain-find-next(NEXT,from-current,priority-up,effort-down)
+:CREATED:  [2022-12-13 Tue 13:01]
+:ID:       563ea9dc-1d65-42ff-bfc1-34c69f0b3d7d
 :END:
 
-#+begin_src elisp :noweb-ref simple-queue-goto-functions
+#+begin_src elisp :noweb-ref simple-queue-goto-functions :results silent
 (defun org-incremental-simple-goto-next ()
   "Rep and go to next outstanding element via a `org-ql' search."
   (interactive)
   (progn
     (with-current-buffer "*Org QL View: Training*"
+      (org-incremental-simple-reschedule-head)
       (org-agenda-next-item 1)
       (org-incremental-org-brain-agenda))
     (with-current-buffer "*Org QL View: Training*"
-      (org-agenda-previous-item 1)
-      (org-incremental-simple-reschedule)
+      (org-incremental-simple-reschedule-body)
       (org-ql-view-refresh))))
+#+end_src
 
 #+begin_src elisp :noweb-ref simple-queue-goto-functions :results silent
 (defun org-incremental-org-brain-agenda ()
@@ -1095,7 +1122,8 @@ Go back to recently completed via the =org-incremental-view-recent= function
     (let* ((marker (org-get-at-bol 'org-marker))
            (id-from-marker (org-id-get marker))
            (entry-from-id (org-brain-entry-from-id id-from-marker)))
-      (org-brain-visualize entry-from-id))))
+      (org-brain-visualize entry-from-id)))
+
 #+end_src
 
 ** NEXT rep-reschedule
