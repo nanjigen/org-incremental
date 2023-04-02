@@ -262,6 +262,7 @@ Let's break down what the scheduler does:
 ** Scheduling properties
 :PROPERTIES:
 :CREATED:  [2022-12-06 Tue 11:19]
+:ID:       35f2cb30-7887-4e8a-b5c5-c506ddffb082
 :END:
 
 #+begin_src elisp :noweb-ref element-properties :results silent
@@ -313,6 +314,10 @@ Convert timestamp to org-mode
 #+end_src
 
 ** NEXT Next-review date
+:PROPERTIES:
+:CREATED:  [2022-12-13 Tue 13:01]
+:ID:       562514ab-6106-43aa-8a45-cca2695e5d12
+:END:
 
 Lifted from ~org-drill~. Let's use this as a base to calculate an estimate of the next review for the current item.
 
@@ -450,6 +455,20 @@ Shouldn't this be using UUID's? What constitutes =marker=?
   (goto-char marker))
 
 #+end_src
+
+#+begin_src elisp :results silent
+;; Defined in ~/.emacs.d/.local/straight/repos/org-drill/org-drill.el
+(defun org-drill-map-entries (func &optional scope drill-match &rest skip)
+  "Like `org-map-entries', but only drill entries are processed."
+  (let ((org-drill-match (or drill-match org-drill-match)))
+    (apply 'org-map-entries func
+           (concat "+" org-incremental-element-tag
+                   (if (and (stringp org-drill-match)
+                            (not (member (elt org-drill-match 0) '(?+ ?- ?|))))
+                       "+" "")
+                   (or org-drill-match ""))
+           (org-drill-current-scope scope)
+           skip)))
 
 #+end_src
 
@@ -609,7 +628,7 @@ this should never happen."
 
 We need to introduce checks for valid A-factor and interval values.
 
-#+begin_src elisp
+#+begin_src elisp :results silent
 (assert (>= 2 2))
 #+end_src
 
@@ -659,7 +678,7 @@ We can piggy back off of some more ~org~ functions:
 Baseline function for setting priority at topic creation.
 Inherit from custom priority.
 
-#+begin_src elisp
+#+begin_src elisp :eval no
 (org-priority org-incremental-priority-default)
 #+end_src
 
@@ -680,20 +699,20 @@ Use the current org-priority if unset")
 Note that sorting numerical priorities does not seem to be working in ~org-ql~. See the relevant [[https://github.com/alphapapa/org-ql/issues/274][issue]].
 
 Use a simple 1-10 range for now:
-#+begin_src elisp
+#+begin_src elisp :eval no
 (setq org-priority-highest 1
       org-priority-lowest 10
       org-priority-default 5)
 #+end_src
 
 Experimenting with local
-#+begin_src elisp
+#+begin_src elisp :eval no
 (setq-local org-priority-highest 1
             org-priority-lowest 10
             org-priority-default 5)
 #+end_src
 
-#+begin_src elisp
+#+begin_src elisp :eval no
 (setq org-priority-highest ?A
       org-priority-lowest ?Z
       org-priority-default ?M)
@@ -712,12 +731,9 @@ This might be useful for setting whether a created subtree implicitly inherits a
   :type 'boolean)
 #+end_src
 
-#+RESULTS:
-: org-incremental-prompt-for-priority-p
-
 Generic function for visually selecting an elements priority
 See ~org-priority~
-#+begin_src elisp
+#+begin_src elisp :results silent
 (defun org-incremental--select-priority ()
   "")
 #+end_src
