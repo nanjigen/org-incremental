@@ -238,9 +238,11 @@ Apply the base algorithm to existing ~:PROPERTIES:~ keys and then write the new 
 The element is rescheduled using ~org~'s internal =org-schedule= function which will be used later for building and sorting a que.
 
 #+begin_src elisp :noweb-ref element rescheduler :results silent
-(defun org-incremental-smart-reschedule ()
+(defun org-incremental-smart-reschedule () ;; TODO use arguments
   "Collect values from headline at point and apply topic algo"
   (interactive)
+  (if (org-incremental-entry-p) nil
+    (org-incremental--init-element))
   (let* ((old-interval (org-incremental-element-current-interval))
          (a-factor (org-incremental-element-a-factor))
          (prior-reps (org-incremental-element-total-repeats)))
