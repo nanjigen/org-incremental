@@ -638,19 +638,21 @@ We need to introduce checks for valid A-factor and interval values.
 :ID:       8d1b2b03-d39a-46a7-a0a7-b90ad714809f
 :END:
 
-#+begin_src elisp
-(defun org-drill-strip-entry-data ()
-  (dolist (prop org-drill-scheduling-properties)
+This is for un-incrementalising an item - in Supermemo parlance this is known as 'forgetting'.
+#+begin_src elisp :noweb-ref element-deletion-functions :results silent
+(defun org-incremental-strip-entry-data ()
+  (dolist (prop org-incremental-scheduling-properties)
     (org-delete-property prop))
   (org-schedule '(4)))
+#+end_src
 
-
-(defun org-drill-strip-all-data (&optional scope)
-  "Delete scheduling data from every drill entry in scope. This
-function may be useful if you want to give your collection of
+#+begin_src elisp :noweb-ref element-deletion-functions :results silent
+(defun org-incremental-strip-all-data (&optional scope)
+  "Delete scheduling data from every incremental entry in scope.
+This function may be useful if you want to give your collection of
 entries to someone else.  Scope defaults to the current buffer,
 and is specified by the argument SCOPE, which accepts the same
-values as `org-drill-scope'."
+values as `org-incremental-scope'."
   (interactive)
   (when (yes-or-no-p
          "Delete scheduling data from ALL items in scope: are you sure?")
@@ -658,11 +660,11 @@ values as `org-drill-scope'."
      ((null scope)
       ;; Scope is the current buffer. This means we can use
       ;; `org-delete-property-globally', which is faster.
-      (dolist (prop org-drill-scheduling-properties)
+      (dolist (prop org-incremental-scheduling-properties)
         (org-delete-property-globally prop))
-      (org-drill-map-entries (lambda () (org-schedule '(4))) scope))
+      (org-incremental-map-entries (lambda () (org-schedule '(4))) scope))
      (t
-      (org-drill-map-entries 'org-drill-strip-entry-data scope)))
+      (org-incremental-map-entries 'org-incremental-strip-entry-data scope)))
     (message "Done.")))
 #+end_src
 
