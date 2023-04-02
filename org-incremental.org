@@ -1361,6 +1361,179 @@ Check whether buffer is an incrementalised one.
 
 #+end_src
 
+* PROJECT Simple que based
+:PROPERTIES:
+:CREATED:  [2022-12-13 Tue 13:01]
+:ID:       b9484b35-25cc-4bf1-a7d3-fedaf0bf3e16
+:END:
+
+This is an alternative scheduler that makes use of the length of a que and an item's sequential position to determine when to rep it. Items at the head are shuffled to the end of the que when completed. It is especially useful for practicing sets of skills.
+
+#+begin_src elisp :noweb-ref simple-configurations :results silent
+(defcustom org-incremental-simple-dir nil
+  "List of dirs to be considered for simple schedule."
+  :type 'string ;; FIXME
+  :group 'org-incremental)
+
+(defcustom org-incremental-simple-headline-level "level=1"
+  "Level of headlines to considered for queing."
+  :group 'org-incremental)
+
+(defvar org-incremental-simple-que nil)
+#+end_src
+
+*** NEXT Write this to allow multiple lists
+:PROPERTIES:
+:CREATED:  [2023-02-14 Tue 20:19]
+:ID:       6f20b925-3bd2-4e96-ac4b-7a5180b4e47a
+:END:
+
+Increment all the items included in que:
+#+begin_src elisp :noweb-ref simple-reschedule :results silent
+(defun org-incremental-simple-reschedule-head ()
+  "Reschedule que items by incrementing by `1+' ."
+  (let* ((hdmarker (or (org-get-at-bol 'org-hd-marker)
+                       (org-agenda-error)))
+         (buffer (marker-buffer hdmarker))
+         (pos (marker-position hdmarker))
+         (end-pos (org-incremental-number-of-entries))
+         (inhibit-read-only t)
+         ) ;; newhead
+    (org-with-remote-undo buffer
+      (with-current-buffer buffer
+        (widen)
+        (goto-char pos)
+        (org-fold-show-context 'agenda)
+        (let ((current-pos (org-element-property :QUE (org-element-at-point))))
+          (if (string= current-pos "1")
+              (org-set-property "QUE" (number-to-string (+ 1 end-pos)))
+            (error "On %s entry, not 1st" current-pos)))))))
+
+(defun org-incremental-simple-reschedule-body ()
+  "Reschedule body of que"
+  (org-map-entries
+   (lambda ()
+     (org-set-property "QUE" (number-to-string
+                              (1- (string-to-number
+                                   (org-element-property :QUE (org-element-at-point)))))))
+   "+LEVEL>=2+QUE>\"1\"" org-incremental-simple-dir))
+
+#+end_src
+
+    #+begin_src elisp :noweb-ref view-simple :results silent
+(defun org-incremental-simple-sorting (x y)
+  "Comparator function to sort simple que items."
+  (string-version-lessp
+   (org-element-property :QUE x)
+   (org-element-property :QUE y)))
+#+end_src
+
+Collect org headlines into a que:
+#+begin_src elisp :results silent
+(defun org-incremental-simple-que ()
+  "Construct or check today's simple outstanding que."
+  (interactive)
+  (let* ((dir (directory-files org-incremental-simple-dir t "\.org$" t))
+         (query '(and (property "QUE")))
+         (sorting (lambda (x y)
+                    (string-version-lessp
+                     (org-element-property :QUE x)
+                     (org-element-property :QUE y))))
+         (results (org-incremental-selection dir query sorting)))
+    (setq org-incremental-simple-que results)))
+#+end_src
+
+View the queued items:
+#+begin_src elisp :results silent
+(defcustom org-incremental-simple-buffer "*org-incremental: Que*"
+  "Customizable buffer-name for the simple que."
+  :type 'string
+  :group 'org-incremental)
+
+(defcustom org-incremental-simple-header "Queued Items"
+  "Customizable header for the simple ql buffer que."
+  :type 'string
+  :group 'org-incremental)
+#+end_src
+
+#+begin_src elisp :noweb-ref view-simple :results silent
+(defun org-incremental-view-simple ()
+  "List outstanding elements via a `org-ql' search."
+  (interactive)
+  (org-incremental-view org-incremental-simple-que "Que" "Training")
+  (org-incremental-org-brain-agenda)) ;; TODO generalize
+  #+end_src
+
+Example configuration using org-brain.
+#+begin_src elisp :eval no
+(map! :after org-brain
+      :map org-brain-visualize-mode-map
+      :desc "n" :n "n" #'org-incremental-simple-goto-next)
+#+end_src
+
+Collect the total number of entries in the target dir:
+#+begin_src elisp :noweb-ref view-simple :results silent
+(defun org-incremental-number-of-entries (&optional level)
+  "Detemine total que size for simple review"
+  (length
+   (org-map-entries t "+LEVEL>=2+QUE>=\"1\"" org-incremental-simple-dir)))
+
+#+end_src
+
+** Seed dir
+:PROPERTIES:
+:CREATED:  [2022-12-13 Tue 13:01]
+:ID:       df1a1393-a40b-4836-ba21-ca83ecdf2208
+:END:
+Seed ~QUE~ property to entries with incrementing value at random:
+
+#+begin_src elisp :eval no
+  (let* ((files org-incremental-simple-dir)
+         (number-headline (org-incremental-number-of-entries))
+         (que-seq (number-sequence 1 number-headline))
+         (shuffled-seq (elfeed--shuffle que-seq)))
+    (setq reuse-seq shuffled-seq)
+    (org-map-entries
+     (lambda ()
+       (org-set-property "QUE" (number-to-string (car reuse-seq)))
+       (setq reuse-seq (delete (car reuse-seq) reuse-seq)))
+     "level>=2" org-incremental-simple-dir))
+#+end_src
+
+#+begin_src elisp :eval no
+(let* ((files (directory-files "~/org/org-brain/kakure-nou" t "\.org$" t))
+       (number-headline (length
+                         (org-map-entries t "level>=2" files)))
+       (que-seq (number-sequence 1 number-headline))
+       (shuffled-seq (elfeed--shuffle que-seq)))
+  (setq reuse-seq shuffled-seq)
+  (org-map-entries
+   (lambda ()
+     (org-set-property "QUE" (number-to-string (car reuse-seq)))
+     (setq reuse-seq (delete (car reuse-seq) reuse-seq)))
+     "level>=2" files))
+#+end_src
+
+List shuffler
+#+begin_src elisp :eval no
+(defun elfeed--shuffle (seq)
+  "Destructively shuffle SEQ."
+  (let ((n (length seq)))
+    (prog1 seq                  ; don't use dotimes result (bug#16206)
+      (dotimes (i n)
+        (cl-rotatef (elt seq i) (elt seq (+ i (random (- n i)))))))))
+
+#+end_src
+
+Tests?
+#+begin_src elisp :eval no
+(key-quiz--shuffle-list '("1" "4"))
+#+end_src
+
+#+begin_src elisp :eval no
+(elfeed--shuffle '("1" "2" "3"))
+#+end_src
+
 * Ideas
 :PROPERTIES:
 :CREATED:  [2022-02-21 Mon 12:21]
