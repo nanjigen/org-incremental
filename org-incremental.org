@@ -964,6 +964,45 @@ The below function performs a search over the files each time it is run, a rathe
     :title "Incremental Elements"))
 #+end_src
 
+Instead of relying only on interactive ~org-ql~ commands, we can provides a list in a variable via =org-ql-select=, which only needs to be run once for each midnight shift, which can then be acted on to draw agenda views.
+
+The ~:buffer:~ and ~:header~ properties should be customizable variables.
+
+#+begin_src elisp :results silent
+(defcustom org-incremental-buffer "*org-incremental: Outstanding*"
+  "Customizable buffer-name for the outstanding que."
+  :type 'string
+  :group 'org-incremental)
+
+(defcustom org-incremental-header "Outstanding Items"
+  "Customizable header for the outstanding ql buffer que."
+  :type 'string
+  :group 'org-incremental)
+#+end_src
+
+#+begin_src elisp :noweb-ref queue-views :results silent
+(defun org-incremental-view (results buffer header)
+  "List outstanding elements via `org-ql-view--display'"
+  (let* ((strings (-map #'org-ql-view--format-element results)))
+    (org-ql-view--display
+      :buffer buffer
+      :header header ;; FIXME Not registered as an *Org QL* buffer
+      :string (s-join "\n" strings))))
+
+#+end_src
+
+#+begin_src elisp :noweb-ref queue-views :results silent
+(defun org-incremental-view-outstanding (results buffer header)
+  "List outstanding elements via `org-ql-view--display'"
+  (interactive)
+  (let* ((results (org-incremental-outstanding-que))
+         (strings (-map #'org-ql-view--format-element results)))
+    (org-ql-view--display
+      :buffer buffer
+      :header header ;; FIXME Not registered as an *Org QL* buffer
+      :string (s-join "\n" strings))))
+
+#+end_src
 ** NEXT [#O] Incremental repped today                            :incremental:
 SCHEDULED: <2022-08-20 Sat>
 :PROPERTIES:
