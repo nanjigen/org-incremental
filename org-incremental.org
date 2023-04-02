@@ -723,12 +723,6 @@ Experimenting with local
             org-priority-default 5)
 #+end_src
 
-#+begin_src elisp :eval no
-(setq org-priority-highest ?A
-      org-priority-lowest ?Z
-      org-priority-default ?M)
-#+end_src
-
 This might be useful for setting whether a created subtree implicitly inherits a parent priority (via cookies), inherits it explicitly (the priority is set textually) or via a custom function
 #+begin_src elisp :noweb-ref priority-system :results silent
 (defcustom org-incremental-priority-inheret 'default
@@ -773,12 +767,12 @@ To emulate Supermemo's outstanding que, we need to query due (and overdue) items
 In order to ease testing =org-ql-select= is put into its own function.
 Results are sorted by priority and date:
 
-#+begin_src elisp :noweb-ref tests :results silent
-(defun org-incremental-selection (dir query)
-  "Run a `org-ql-select' over DIR against the QUERY."
+#+begin_src elisp :noweb-ref que-funcs :results silent
+(defun org-incremental-selection (dir query sort)
+  "Run a `org-ql-select' over DIR against the QUERY, SORTing."
   (org-ql-select dir query
     :action 'element-with-markers
-    :sort '(date priority)))
+    :sort sort))
 #+end_src
 
 We require the use of ='element-with-markers= to be able to build the =agenda= like buffer later on. This calls =org-ql--add-markers= internally, and we use this in our test below.
@@ -890,6 +884,15 @@ Set previous shift?
   (setq org-incremental-current-shift (decode-time)))
 #+end_src
 
+#+begin_src elisp
+(time-less-p
+ org-incremental-current-shift
+ (decoded-time-add (org-incremental-midnight)
+                   (parse-time-string org-incremental-midnight-shift)))
+#+end_src
+
+#+RESULTS:
+
 Here we test for midnight drift
 (SEC MIN HOUR DAY MON YEAR DOW DST TZ)
 #+begin_src elisp :noweb-ref midnight-shift-funcs :results silent
@@ -923,14 +926,31 @@ Where am I running the test for current-shift?
   (interactive)
   (if (or (null org-incremental-current-shift)
           (org-incremental-calculate-midnight-drift org-incremental-current-shift org-incremental-midnight-shift)) t
-  (let* ((query org-incremental-query)
-         (results (org-ql-select org-incremental-directories query
-                    :action 'element-with-markers
-                    :sort '(date priority))))
+  (let* ((dir (directory-files-recursively org-directory "\.org$" t))
+         (query org-incremental-query)
+         (sorting '(date priority))
+         (results (org-incremental-selection dir query sorting)))
     (setq org-incremental-outstanding-que results)))
 (eval 'org-incremental-outstanding-que))
 #+end_src
 
+** Que Views
+:PROPERTIES:
+:CREATED:  [2023-03-12 Sun 11:59]
+:ID:       19595850-5281-43a0-bd9d-c8d9e9992908
+:END:
+
+For reasons, variables:
+
+#+begin_src elisp :noweb-ref que-view-vars :results silent
+(defvar org-incremental-ql-view-buffer-name-prefix "*org-incremental:"
+  "Prefix for names of `org-incremental-ql-view' buffers.")
+#+end_src
+
+The below function performs a search over the files each time it is run, a rather costly function. However, as it uses the ~org-ql-view~ function via ~org-ql-search~, it produces a prettified =agenda=-like buffer that accepts some =org-agenda= commands.
+
+#+begin_src elisp :noweb no :eval no
+(defun org-incremental-search-view-outstanding ()
   "List outstanding elements via a `org-ql' search"
   (interactive)
   (org-ql-search org-incremental-directories
