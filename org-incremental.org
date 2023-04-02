@@ -1003,6 +1003,27 @@ The ~:buffer:~ and ~:header~ properties should be customizable variables.
       :string (s-join "\n" strings))))
 
 #+end_src
+
+** NEXT Start session function
+:PROPERTIES:
+:TRIGGER:  chain-find-next(NEXT,from-current,priority-up,effort-down)
+:CREATED:  [2022-12-13 Tue 13:01]
+:ID:       44101b69-8ac3-46c4-b364-22999cb9e6d9
+:END:
+
+Finally, we wrap everything up in the org ~incremental-start-session~ command. This should check for an existing session, and start one if there is not or it is stale.
+
+#+begin_src elisp :results silent
+(defun org-incremental-start-session ()
+  "Entry function for starting a incremental writing session"
+  (interactive)
+  (org-incremental-outstanding-que)
+  (org-incremental-view-outstanding)
+  (org-agenda-switch-to)
+  (org-narrow-to-subtree))
+
+#+end_src
+
 ** NEXT [#O] Incremental repped today                            :incremental:
 SCHEDULED: <2022-08-20 Sat>
 :PROPERTIES:
