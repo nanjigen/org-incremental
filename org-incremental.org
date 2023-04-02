@@ -1024,6 +1024,15 @@ Finally, we wrap everything up in the org ~incremental-start-session~ command. T
 
 #+end_src
 
+** NEXT Write a function that considers if there is a burly link in the properties drawer
+:PROPERTIES:
+:TRIGGER:  chain-find-next(NEXT,from-current,priority-up,effort-down)
+:CREATED:  [2022-12-13 Tue 13:01]
+:ID:       6a92a032-b5eb-43c0-80b9-90acbcc041c8
+:END:
+
+Using burly for restoring views could be quite nice
+
 ** NEXT [#O] Incremental repped today                            :incremental:
 SCHEDULED: <2022-08-20 Sat>
 :PROPERTIES:
