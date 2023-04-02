@@ -1201,7 +1201,56 @@ Enter should go to an element
 
 https://github.com/alphapapa/org-ql/issues/88
 memoization
+* Git
+:PROPERTIES:
+:CREATED:  [2022-12-13 Tue 13:01]
+:ID:       dd99b0cc-9bcc-416d-8c3a-6ceac766651b
+:END:
 
+#+begin_src elisp :results silent
+(defun switch-to-git-branch ()
+  "Switch to the git branch corresponding to the current top-level org-mode headline."
+  (interactive)
+  (let ((headline (org-get-heading)))
+    (magit-checkout headline)))
+#+end_src
+
+If you are not already checked out to a particular git branch, you can still use org-mode and Elisp to find out which subheadings are under a particular top-level heading. One way to do this would be to use the =org-map-entries= function to iterate over all of the subheadings under the top-level heading, and then use the =org-get-heading= function to retrieve the text of each subheading. Here is an example of how you might do this:
+
+** list subheadings
+:PROPERTIES:
+:CREATED:  [2022-12-13 Tue 13:01]
+:ID:       b6fcb0f2-d547-49e1-afe0-9ace0f4dccd6
+:END:
+
+(org-find-top-headline)
+#+begin_src elisp :results silent
+(defun list-subheadings (top-level-heading)
+  "List all of the subheadings under a given top-level org-mode heading."
+  (let ((subheadings '()))
+    (org-map-entries
+     (lambda ()
+       (push (org-get-heading) subheadings))
+     top-level-heading
+     'tree)
+    subheadings))
+#+end_src
+
+In this example, the list-subheadings function takes a top-level heading as an argument and returns a list of all of the subheadings under that heading. The function uses org-map-entries to iterate over all of the subheadings under the top-level heading, and then uses org-get-heading to retrieve the text of each subheading. The subheadings are added to a list, which is then returned by the function. This allows you to easily and efficiently find out which subheadings are under a particular top-level heading, even if you are not currently checked out to the corresponding git branch.
+
+How would I be able to make `list-subheadings` map through different git branches of a org-mode file?
+
+If you want to use the list-subheadings function to map through different git branches of an org-mode file, you can use the magit-with-refresh macro to temporarily switch to each branch and run the list-subheadings function on it. This can help to ensure that the function is run on the correct version of the org-mode file for each branch, and that the changes made by the function are properly saved and committed to the correct branch. Here is an example of how you might do this:
+
+#+begin_src elisp :results silent
+(defun list-subheadings-for-all-branches (org-file)
+  "List all of the subheadings under each top-level heading in an org-mode file, for each git branch containing that file."
+  (magit-with-refresh
+   (magit-branch-loop
+    (list-subheadings (org-get-heading)))))
+#+end_src
+
+In this example, the list-subheadings-for-all-branches function takes an org-mode file as an argument and returns a list of all of the subheadings under each top-level heading in that file, for each git branch containing the file. The function uses magit-with-refresh to ensure that the org-mode file is properly refreshed and updated for each branch, and then uses magit-branch-loop to iterate over each branch and run the list-subheadings function on it. This allows you to easily and efficiently map through the different git branches of an org-mode file and find out which subheadings are under each top-level heading in each branch.
 * Interface
 :PROPERTIES:
 :CREATED:  [2021-10-09 Sat 14:49]
