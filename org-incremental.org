@@ -1586,6 +1586,7 @@ Write a function that /deincrements/ a given headline/element that has a deadlin
   "Deincrementalize towards a deadline at some optimal distance"
   (if org-incremental-deincrement-p t))
 #+end_src
+
 ** TODO mail integration
 :PROPERTIES:
 :CREATED:  [2022-08-09 Tue 11:40]
@@ -1630,7 +1631,7 @@ Maybe use ~org-roam's~ dual model - mirror header information in a db which can 
 :ID:       08b151d6-e27e-495d-8d3a-e17752d4cd3d
 :END:
 
-- Justifications for incremental writing:
+ Justifications for incremental writing:
 - https://www.masterhowtolearn.com/2020-06-09-incremental-writing-no-more-writer-block/
 - https://help.supermemo.org/wiki/Incremental_learning#Incremental_writing
 - https://www.masterhowtolearn.com/2020-08-09-the-magic-behind-incremental-writing-spacing-and-interleaving/
@@ -1650,6 +1651,9 @@ Existing SRS algorithms in Emacs:
 
 Other implementations:
 - https://github.com/bjsi/incremental-writing/blob/master/src/scheduler.ts
+
+Other:
+- https://github.com/kpence/org-sm/blob/master/org-sm.el
 
 * Files
 :PROPERTIES:
@@ -1693,7 +1697,17 @@ Other implementations:
 ;;
 #+end_src
 
-#+begin_src elisp :mkdirp yes :noweb yes :tangle org-incremental.el
+** org-incremental/org-incremental.el
+:PROPERTIES:
+:CREATED:  [2021-09-08 Wed 21:52]
+:ID:       0bbb98b5-df68-41d9-a16d-54099acb3d0f
+:END:
+
+#+begin_src elisp :mkdirp yes :noweb yes :results silent
+;;; org-incremental.el --- Incremental Writing System for org-mode -*- lexical-binding: t; -*-
+#+end_src
+
+#+begin_src elisp :mkdirp yes :noweb yes :tangle org-incremental.el :results silent
 ;;; org-incremental.el --- Incremental Writing System for org-mode -*- lexical-binding: t; -*-
 
 «license»
@@ -1703,6 +1717,7 @@ Other implementations:
 (require 'cl-lib)
 (require 'org)
 (require 'org-element)
+(require 'org-expiry)
 (require 'org-id)
 (require 'org-ql)
 (require 'org-incremental-scheduler)
@@ -1746,10 +1761,19 @@ See `org-show-set-visibility' for possible values"
   :options '(ancestors lineage minimal local tree canonical))
 #+end_src
 
-#+begin_src elisp :mkdirp yes :noweb yes :tangle org-incremental.el
-«element-options»
+#+begin_src elisp :mkdirp yes :noweb yes :tangle org-incremental.el :results silent
 
 «element-properties»
+
+«que-vars»
+
+«midnight-shift-vars»
+
+«element-options»
+
+«midnight-shift-options»
+
+«que-options»
 
 ;; Mode
 «minor-mode»
@@ -1763,13 +1787,18 @@ See `org-show-set-visibility' for possible values"
 ;; Check elements
 «element-checks»
 
-;; Check elements
+;; Element stats
 «element-stats»
+
+;; Remove elements
+«element-deletion-functions»
 
 ;; Priority
 «priority-system»
 
 ;; Queue
+«midnight-shift-funcs»
+
 «queue-views»
 
 «queue-goto-functions»
@@ -1782,6 +1811,10 @@ See `org-show-set-visibility' for possible values"
 #+end_src
 
 ** org-incremental-simple.el
+:PROPERTIES:
+:CREATED:  [2022-12-13 Tue 13:01]
+:ID:       3cb5b8fc-ee5d-47f5-a39b-459c701f441f
+:END:
 
 #+begin_src elisp :mkdirp yes :noweb yes :tangle org-incremental-simple.el :results silent
 ;;; org-incremental-simple.el --- Incremental Writing System for org-mode -*- lexical-binding: t; -*-
@@ -1817,6 +1850,7 @@ See `org-show-set-visibility' for possible values"
 «license»
 
 ;;; Code
+(require 'org)
 
 «spacing algo»
 
