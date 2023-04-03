@@ -921,18 +921,20 @@ I should write some kind of while loop that messages to the user that the que is
 This should actually be able to construct a que for any given day?
 
 Where am I running the test for current-shift?
-#+begin_src elisp :results silent
+#+begin_src elisp :noweb-ref que-funcs :results silent
 (defun org-incremental-outstanding-que ()
   "Construct or check today's outstanding que."
-  (interactive)
   (if (or (null org-incremental-current-shift)
-          (org-incremental-calculate-midnight-drift org-incremental-current-shift org-incremental-midnight-shift)) t
-  (let* ((dir (directory-files-recursively org-directory "\.org$" t))
-         (query org-incremental-query)
-         (sorting '(date priority))
-         (results (org-incremental-selection dir query sorting)))
-    (setq org-incremental-outstanding-que results)))
-(eval 'org-incremental-outstanding-que))
+          (org-incremental-calculate-midnight-drift
+           org-incremental-current-shift
+           org-incremental-midnight-shift) t)
+      (let* ((dir (directory-files-recursively org-directory "\.org$" t))
+             (query org-incremental-query)
+             (sorting '(date priority))
+             (results (org-incremental-selection dir query sorting)))
+        (setq org-incremental-outstanding-que results)
+        (org-incremental-set-current-shift))
+    (eval 'org-incremental-outstanding-que)))
 #+end_src
 
 ** Que Views
