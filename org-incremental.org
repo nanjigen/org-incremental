@@ -1746,6 +1746,24 @@ Other:
 ;; Incremental writing for org-mode
 ;;
 #+end_src
+** README.org
+:PROPERTIES:
+:CREATED:  [2023-04-14 Fri 11:32]
+:ID:       3577462a-ad03-4c4b-95ee-9b3de7565c28
+:END:
+
+Use ~org-transclude~ with a temporary buffer to programmatically generate an up-to-date =README.org= from the '[[https://nobiot.github.io/org-transclusion/#Include-the-section-before-the-first-headline-_0028Org-file-only_0029][First section]]' of the current file, as well as the Overview heading:
+#+begin_src elisp
+(with-temp-buffer
+  (org-mode)
+  (insert "
+\n#+transclude: [[file:org-incremental.org]]  :end \"Overview\"
+
+\n#+transclude: [[id:a981430d-1319-4d5a-b036-c1478fdf7cd4][overview]]
+                ")
+  (org-transclusion-add-all)
+  (org-export-to-file 'org "README.org"))
+#+end_src
 
 ** org-incremental/org-incremental.el
 :PROPERTIES:
