@@ -185,7 +185,7 @@ end
 #+end_src
 
 #+RESULTS: geo-progression
-[[file:img/progression.png]]
+[[file:./img/progression.png]]
 
 These results are then sorted by priority, a user defined variable at the core of both incremental reading and writing.
 
