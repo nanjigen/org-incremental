@@ -273,6 +273,32 @@ Returns a plist containing the computed mutations."
           :total-repeats next-reps
           :scheduled-time scheduled-time)))
 #+end_src
+
+Test the plist (no org mocking required)
+#+begin_src elisp :noweb-ref tests :results silent
+(ert-deftest test-org-incremental-calculate-next-state ()
+  "Verify that the state transformer correctly builds the execution plist."
+  (let* ((mock-now (encode-time '(0 0 0 1 1 2026 nil nil nil))) ; Fixed time anchor: Jan 1, 2026
+         (old-interval 5)
+         (a-factor 2.0)
+         (prior-reps 3)
+         (result (org-incremental-calculate-next-state old-interval a-factor prior-reps mock-now)))
+    
+    ;; Assert state transitions are accurate
+    (should (= (plist-get result :old-interval) 5))
+    (should (= (plist-get result :new-interval) 10))
+    (should (= (plist-get result :total-repeats) 4))
+    
+    ;; Verify that time arithmetic output scales exactly matching the new interval (10 days)
+    (let ((expected-future-time (time-add mock-now (days-to-time 10))))
+      (should (equal (plist-get result :scheduled-time) expected-future-time)))))
+
+#+end_src
+
+#+begin_src elisp :eval yes :results silent
+(ert 'test-org-incremental-calculate-next-state)
+#+end_src
+
 Apply the base algorithm to existing ~:PROPERTIES:~ keys and then write the new interval, moving the previous interval into the "=OLD_INTERVAL=" key.
 The element is rescheduled using ~org~'s internal =org-schedule= function which will be used later for building and sorting a que.
 
