@@ -206,7 +206,8 @@ In the functional style the interval determining algorithm:
 (defun org-incremental-determine-next-interval (old-interval a-factor)
   "Calcuate new interval for current headline.
 Uses: (Interval=OldInterval*AFactor)"
-  (let ((next-interval (* old-interval a-factor)))
+  (let* ((safe-old (if (or (not old-interval) (= old-interval 0)) 1 old-interval))
+         (next-interval (* safe-old a-factor)))
     (round next-interval)))
 #+end_src
 
