@@ -208,24 +208,48 @@ In the functional style the interval determining algorithm:
 Uses: (Interval=OldInterval*AFactor)"
   (let ((next-interval (* old-interval a-factor)))
     (round next-interval)))
-
 #+end_src
 
 This can be compared to a geometric sequencer:
 
-#+begin_src elisp :eval no
+#+begin_src elisp :eval yes :results silent
 (defun org-incremental-geometric (a r n)
-  "Take the first term `a' and multiply by the common ratio `r'
-To produce `n'th value in a sequence"
-  (while (> n 1) ;; TODO test that `r' is not 0
+  "Take the first term `A' and multiply by the common ratio `R'
+To produce `N'th value in a sequence"
+  (cl-assert (> r 0) t "r is not greater than 0") ;; TODO test that `r' is not 0
+  (if (> n 0)
     (* a (expt r (1- n)))))
 #+end_src
 
-Generate a series:
+Then test by generating 5th element in series and comparing the values emitted by both functions:
 
-#+begin_src elisp :eval no
-(defun org-incremental-geometric-sequencer ()
-  )
+#+begin_src elisp :noweb-ref tests :results silent
+(ert-deftest test-org-incremental-spacing-5th-element ()
+  "Test that both the functional step algorithm and the geometric sequencer
+agree on the 5th element in the repetition series."
+  (let ((a-factor 2.0))
+    ;; Assert that the geometric sequence for N=5 yields 16
+    (should (= (round (org-incremental-geometric 1 a-factor 5)) 
+               16))
+    
+    ;; Assert that the sequential step algorithm (using previous interval 8)
+    ;; matches the geometric target of 16
+    (should (= (org-incremental-determine-next-interval 8 a-factor) 
+               16))
+    
+    ;; Directly compare the two approaches
+    (should (= (org-incremental-determine-next-interval 8 a-factor)
+               (round (org-incremental-geometric 1 a-factor 5))))))
+
+(ert-deftest test-org-incremental-geometric-edge-case ()
+  "Ensure that the geometric function errors out gracefully on invalid ratios."
+  (should-error (org-incremental-geometric 1 0 5)
+                :type 'wrong-type-argument)) ;; triggers on your cl-assert failure
+
+#+end_src
+
+#+begin_src elisp :eval yes :results silent
+(ert 'test-org-incremental-spacing-5th-element)
 #+end_src
 
 * Scheduler
