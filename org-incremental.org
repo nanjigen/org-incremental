@@ -259,6 +259,20 @@ agree on the 5th element in the repetition series."
 :ID:       e02e162b-2845-4dd2-9e09-b40792302541
 :END:
 
+Pure state transition function to calculate next state of current headline as a plist:
+#+begin_src elisp :noweb-ref element rescheduler :results silent
+(defun org-incremental-calculate-next-state (old-interval a-factor prior-reps current-time)
+  "Purely compute the next state updates based on current tracking data.
+Returns a plist containing the computed mutations."
+  (let* ((new-interval (org-incremental-determine-next-interval old-interval a-factor))
+         (safe-old (if (or (not old-interval) (= old-interval 0)) 1 old-interval)) ;; sanitize
+         (next-reps (1+ (or prior-reps 0))) ;; structural shield against unreviewed headlines
+         (scheduled-time (time-add current-time (days-to-time new-interval))))
+    (list :old-interval safe-old
+          :new-interval new-interval
+          :total-repeats next-reps
+          :scheduled-time scheduled-time)))
+#+end_src
 Apply the base algorithm to existing ~:PROPERTIES:~ keys and then write the new interval, moving the previous interval into the "=OLD_INTERVAL=" key.
 The element is rescheduled using ~org~'s internal =org-schedule= function which will be used later for building and sorting a que.
 
