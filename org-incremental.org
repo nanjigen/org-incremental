@@ -202,22 +202,26 @@ Instead of re-implementing a geometric sequence directly, we'll copy SM's simple
 In the functional style the interval determining algorithm:
 - We use =round= here because human work days are measured in real days, which means we have a full circadian cycle between reps.
 
-#+begin_src elisp :noweb-ref spacing algo :results silent
+#+begin_src elisp :noweb-ref spacing-algo :results silent
 (defun org-incremental-determine-next-interval (old-interval a-factor)
   "Calcuate new interval for current headline.
 Uses: (Interval=OldInterval*AFactor)"
   (let* ((safe-old (if (or (not old-interval) (= old-interval 0)) 1 old-interval))
          (next-interval (* safe-old a-factor)))
     (round next-interval)))
+
 #+end_src
 
 This can be compared to a geometric sequencer:
-
-#+begin_src elisp :eval yes :results silent
+Note that we don't use ~cl-assert~ here when testing that r is greater than 0, as this macro can be stripped out based on the configuration of the ~cl-assertions~ variable.
+#+begin_src elisp :noweb-ref spacing-algo :eval yes :results silent
 (defun org-incremental-geometric (a r n)
   "Take the first term `A' and multiply by the common ratio `R'
 To produce `N'th value in a sequence"
-  (cl-assert (> r 0) t "r is not greater than 0") ;; TODO test that `r' is not 0
+  ;; 1. Hard runtime type/boundary enforcement
+  (unless (and (numberp r) (> r 0))
+    (signal 'wrong-type-argument (list 'greater-than-zero-p r)))
+  ;; 2. Sequence calculation core
   (if (> n 0)
     (* a (expt r (1- n)))))
 #+end_src
@@ -245,7 +249,7 @@ agree on the 5th element in the repetition series."
 (ert-deftest test-org-incremental-geometric-edge-case ()
   "Ensure that the geometric function errors out gracefully on invalid ratios."
   (should-error (org-incremental-geometric 1 0 5)
-                :type 'wrong-type-argument)) ;; triggers on your cl-assert failure
+                :type 'wrong-type-argument))
 
 #+end_src
 
