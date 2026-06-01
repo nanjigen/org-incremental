@@ -337,9 +337,61 @@ The element is rescheduled using ~org~'s internal =org-schedule= function which 
     
     (message "Scheduled out %d days ahead. (Repetition #%d)" new-int total-reps)))
 #+end_src
+
+Integration test using a temporary buffer and ~cl-letf~:
+#+begin_src elisp :noweb-ref tests :eval yes :results silent
+(ert-deftest test-org-incremental-review-item-integration ()
+  "Verify that `org-incremental-review-item` accurately updates buffer properties and schedule tags."
+  (with-temp-buffer
+    ;; 1. Setup Environment: Initialize major mode and dummy Org tree
+    (org-mode)
+    (insert "* TODO Master Functional Programming in Elisp
+:PROPERTIES:
+:INTERVAL:    4
+:A_FACTOR:    2.5
+:TOTAL_REPEATS: 2
+:END:
+")
+    
+    ;; 2. Place point (cursor) on the headline 
+    (goto-char (point-min))
+    
+    ;; 3. Mock Environmental Dynamics
+    ;; Patch `current-time` so that test is deterministic regardless of when it runs.
+    ;; We also stub package's metadata extraction utilities for precise isolation.
+    (let ((mock-now (encode-time '(0 0 0 1 1 2026 nil nil nil)))) ; Fixed Anchor: Jan 1, 2026
+      (cl-letf* (((symbol-function 'current-time) 
+                  (lambda () mock-now))
+                 ((symbol-function 'org-incremental-entry-p) 
+                  (lambda () t))
+                 ((symbol-function 'org-incremental-element-current-interval) 
+                  (lambda () 4))
+                 ((symbol-function 'org-incremental-element-a-factor) 
+                  (lambda () 2.5))
+                 ((symbol-function 'org-incremental-element-total-repeats) 
+                  (lambda () 2))
+                 ((symbol-function 'org-incremental-time-to-inactive-org-timestamp) 
+                  (lambda (_time) "[2026-01-01 Thu]")))
+        
+        ;; 4. Execute the interactive command under test
+        (org-incremental-review-item)
+        
+        ;; 5. Verification Phase: Assert property mutations match expected pure states
+        ;; (Interval 4 * A-Factor 2.5 = Next Interval 10)
+        (should (equal (org-entry-get (point) "OLD_INTERVAL") "4"))
+        (should (equal (org-entry-get (point) "NEW_INTERVAL") "10"))
+        (should (equal (org-entry-get (point) "TOTAL_REPEATS") "3"))
+        (should (equal (org-entry-get (point) "LAST_REVIEWED") "[2026-01-01 Thu]"))
+        
+        ;; 6. Verification Phase: Check Org-mode's native scheduling insertion
+        ;; 10 days added to Jan 1, 2026 lands precisely on Jan 11, 2026.
+        (goto-char (point-min))
+        (should (search-forward "SCHEDULED: <2026-01-11" nil t))))))
 #+end_src
 
-Let's break down what the scheduler does:
+#+begin_src elisp :eval yes :results silent
+(ert 'test-org-incremental-review-item-integration)
+#+end_src
 
 ** Scheduling properties
 :PROPERTIES:
