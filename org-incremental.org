@@ -264,7 +264,7 @@ agree on the 5th element in the repetition series."
 :END:
 
 Pure state transition function to calculate next state of current headline as a plist:
-#+begin_src elisp :noweb-ref element rescheduler :results silent
+#+begin_src elisp :noweb-ref element-rescheduler :results silent
 (defun org-incremental-calculate-next-state (old-interval a-factor prior-reps current-time)
   "Purely compute the next state updates based on current tracking data.
 Returns a plist containing the computed mutations."
@@ -304,26 +304,39 @@ Test the plist (no org mocking required)
 #+end_src
 
 Apply the base algorithm to existing ~:PROPERTIES:~ keys and then write the new interval, moving the previous interval into the "=OLD_INTERVAL=" key.
-The element is rescheduled using ~org~'s internal =org-schedule= function which will be used later for building and sorting a que.
 
-#+begin_src elisp :noweb-ref element rescheduler :results silent
-(defun org-incremental-smart-reschedule () ;; TODO use arguments
-  "Collect values from headline at point and apply topic algo"
+The element is rescheduled using ~org~'s internal =org-schedule= function which will be used later for building and sorting a que.
+#+begin_src elisp :noweb-ref element-rescheduler :results silent
+(defun org-incremental-review-item () ;; TODO use arguments
+ "Collect values from headline at point, compute updates, and apply mutations."
   (interactive)
-  (if (org-incremental-entry-p) nil
+  ;; Ensure the entry is initialized
+  (unless (org-incremental-entry-p)
     (org-incremental--init-element))
-  (let* ((old-interval (org-incremental-element-current-interval))
+  
+(let* ((old-interval (org-incremental-element-current-interval))
          (a-factor (org-incremental-element-a-factor))
-         (prior-reps (org-incremental-element-total-repeats)))
-    (setq new-interval (org-incremental-determine-next-interval old-interval a-factor))
-    (org-entry-put (point) "NEW_INTERVAL" (prin1-to-string new-interval))
-    (org-schedule nil (time-add (current-time)
-                                (days-to-time
-                                 new-interval)))
-    (org-entry-put (point) "OLD_INTERVAL" (number-to-string old-interval))
-    (org-entry-put (point) "TOTAL_REPEATS" (number-to-string (+ 1 prior-reps)))
-    (org-set-property "LAST_REVIEWED"
-                      (org-incremental-time-to-inactive-org-timestamp (current-time)))))
+         (prior-reps (org-incremental-element-total-repeats))
+         (now (current-time))
+         
+         ;; Pass data into our pure calculation engine
+         (updates (org-incremental-calculate-next-state old-interval a-factor prior-reps now))
+         
+         ;; Extract values from the resulting plist
+         (new-int (plist-get updates :new-interval))
+         (total-reps (plist-get updates :total-repeats)))
+  
+    ;; Apply the mutations to each org element
+    (org-entry-put (point) "OLD_INTERVAL" (number-to-string (plist-get updates :old-interval)))
+    (org-entry-put (point) "NEW_INTERVAL" (number-to-string new-int))
+    (org-entry-put (point) "TOTAL_REPEATS" (number-to-string total-reps))
+    (org-entry-put (point) "LAST_REVIEWED" (org-incremental-time-to-inactive-org-timestamp now))
+    
+    ;; Update native org scheduling
+    (org-schedule nil (plist-get updates :scheduled-time))
+    
+    (message "Scheduled out %d days ahead. (Repetition #%d)" new-int total-reps)))
+#+end_src
 #+end_src
 
 Let's break down what the scheduler does:
