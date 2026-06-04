@@ -261,6 +261,13 @@ agree on the 5th element in the repetition series."
 :PROPERTIES:
 :CREATED:  [2021-08-31 Tue 18:15]
 :ID:       e02e162b-2845-4dd2-9e09-b40792302541
+The scheduler contains functions for calculating the next interval of a headline and applying that date using org-mode internals.
+Where possible, we maintain a core of pure functions and hand off state to boundary helpers.
+
+** Calculate next state
+:PROPERTIES:
+:CREATED:  [2026-06-05 Fri 08:46]
+:ID:       0aa0f7d6-580e-406b-a0c4-f896be62d3dc
 :END:
 
 Pure state transition function to calculate next state of current headline as a plist:
@@ -303,9 +310,14 @@ Test the plist (no org mocking required)
 (ert 'test-org-incremental-calculate-next-state)
 #+end_src
 
+** Buffer mutating
+:PROPERTIES:
+:CREATED:  [2026-06-05 Fri 08:48]
+:ID:       58196608-fae5-44dc-a12a-ccdc59860db6
+:END:
 Apply the base algorithm to existing ~:PROPERTIES:~ keys and then write the new interval, moving the previous interval into the "=OLD_INTERVAL=" key.
-
 The element is rescheduled using ~org~'s internal =org-schedule= function which will be used later for building and sorting a que.
+
 #+begin_src elisp :noweb-ref element-rescheduler :results silent
 (defun org-incremental-review-item () ;; TODO use arguments
  "Collect values from headline at point, compute updates, and apply mutations."
