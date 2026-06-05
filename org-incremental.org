@@ -536,8 +536,39 @@ Test that we get a given element along the line:
 (should (= (org-incremental-hypothetical-next-interval 1 1.68 3) 5)))
 #+end_src
 
+Check that ~OLD_INTERVAL~ and ~A_FACTOR~ properties are correctly read from current headline using a temp-buffer. 
+#+begin_src elisp :noweb-ref tests :results silent
+(ert-deftest test-org-incremental-hypothetical-next-review-dates ()
+  "Ensure hypothetical dates are correctly parsed from a headline's properties."
+  (with-temp-buffer
+    (org-mode)
+    ;; 1. Create a dummy headline
+    (insert "* Test Headline\n")
+    (goto-char (point-min))
+    
+    ;; 2. Set the properties dynamically using your defcustom variables
+    (org-set-property org-incremental-old-interval-property "2")
+    (org-set-property org-incremental-a-factor-property "3.0")
+    
+    ;; 3. Run the function asking for 3 steps
+    ;; Expectation: 2 * 3 = 6 -> 18 -> 54
+    (should (equal (org-incremental-hypothetical-next-review-dates 3) 
+                   '(6 18 54)))
+                   
+    ;; 4. Test the fallback mechanism (if properties are missing)
+    ;; Delete the properties
+    (org-delete-property org-incremental-old-interval-property)
+    (org-delete-property org-incremental-a-factor-property)
+    
+    ;; Expectation: Defaults to interval 1, a-factor 2.0 (1 -> 2 -> 4 -> 8)
+    (should (equal (org-incremental-hypothetical-next-review-dates 3) 
+                   '(2 4 8)))))
+#+end_src
+
+
 #+begin_src elisp :results silent
 (ert 'test-org-incremental-hypothetical-next-interval)
+(ert 'test-org-incremental-hypothetical-next-review-dates)
 #+end_src
 
 #+begin_src elisp :noweb-ref element-rescheduler :results silent
