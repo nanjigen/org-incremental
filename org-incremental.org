@@ -531,6 +531,9 @@ Test that we get a given element along the line:
   
   ;; 2 steps starting from 8: 8 -> 16 -> 32
   (should (= (org-incremental-hypothetical-next-interval 8 2.0 2) 32)))
+
+;; 3 steps starting from 1 and using fib: 2 -> 3 -> 5 ;; TODO start from 0 to get 5th as 5
+(should (= (org-incremental-hypothetical-next-interval 1 1.68 3) 5)))
 #+end_src
 
 #+begin_src elisp :results silent
