@@ -519,6 +519,24 @@ Defaults to predicting the next 5 steps."
     (reverse intervals)))
 #+end_src
 
+Test that we get a given element along the line:
+#+begin_src elisp :noweb-ref tests :results silent
+(ert-deftest test-org-incremental-hypothetical-next-interval ()
+  "Ensure the hypothetical interval calculator correctly loops geometric incrementation."
+  ;; 1 step: 1 * 2.0 = 2
+  (should (= (org-incremental-hypothetical-next-interval 1 2.0 1) 2))
+  
+  ;; 3 steps: 1 -> 2 -> 4 -> 8
+  (should (= (org-incremental-hypothetical-next-interval 1 2.0 3) 8))
+  
+  ;; 2 steps starting from 8: 8 -> 16 -> 32
+  (should (= (org-incremental-hypothetical-next-interval 8 2.0 2) 32)))
+#+end_src
+
+#+begin_src elisp :results silent
+(ert 'test-org-incremental-hypothetical-next-interval)
+#+end_src
+
 #+begin_src elisp :noweb-ref element-rescheduler :results silent
 (defun org-incremental-show-future-schedule ()
   "Display the projected review intervals for the current item in the echo area."
