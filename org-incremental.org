@@ -467,6 +467,21 @@ Utility function to convert timestamps to org-mode format. We =car= ~org-time-st
    time))
 #+end_src
 
+Test time logic, note that we set a timezone in order to avoid drift:
+#+begin_src elisp :noweb-ref tests :results silent
+(ert-deftest test-org-incremental-timestamp-formatting ()
+  "Ensure time converts correctly to an inactive Org date-only string."
+  (let* ((test-time (date-to-time "2022-12-06T11:19:00+09:00")) ;; lock time
+         (org-time-stamp-formats '("<%Y-%m-%d %a>" . "<%Y-%m-%d %a %H:%M>"))) ;; mock format
+    ;; 3. Assert the output matches the inactive date-only format
+    (should (string= (org-incremental-time-to-inactive-org-timestamp test-time)
+                     "[2022-12-06 Tue]"))))
+#+end_src
+
+#+begin_src elisp :results silent
+(ert 'test-org-incremental-timestamp-formatting)
+#+end_src
+
 ** NEXT Next-review date
 :PROPERTIES:
 :CREATED:  [2022-12-13 Tue 13:01]
