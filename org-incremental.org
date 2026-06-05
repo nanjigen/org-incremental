@@ -490,47 +490,32 @@ Test time logic, note that we set a timezone in order to avoid drift:
 
 Lifted from ~org-drill~. Let's use this as a base to calculate an estimate of the next review for the current item.
 
-#+begin_src elisp :eval no :results silent
-(defun org-drill-hypothetical-next-review-date (quality)
-  "Returns an integer representing the number of days into the future
-that the current item would be scheduled, based on a recall quality
-of QUALITY."
-  (let ((weight (org-entry-get (point) "DRILL_CARD_WEIGHT")))
-    (cl-destructuring-bind (last-interval repetitions failures
-                                       total-repeats meanq ease)
-        (org-drill-get-item-data)
-      (if (stringp weight)
-          (setq weight (read weight)))
-      (cl-destructuring-bind (next-interval _repetitions _ease
-                                         _failures _meanq _total-repeats
-                                         &optional _ofmatrix)
-          (cl-case org-drill-spaced-repetition-algorithm
-            (sm5 (org-drill-determine-next-interval-sm5 last-interval repetitions
-                                              ease quality failures
-                                              meanq total-repeats
-                                              org-drill-sm5-optimal-factor-matrix))
-            (sm2 (org-drill-determine-next-interval-sm2 last-interval repetitions
-                                              ease quality failures
-                                              meanq total-repeats))
-            (simple8 (org-drill-determine-next-interval-simple8 last-interval repetitions
-                                                      quality failures meanq
-                                                      total-repeats)))
-        (cond
-         ((not (cl-plusp next-interval))
-          0)
-         ((and (numberp weight) (cl-plusp weight))
-          (+ last-interval
-             (max 1.0 (/ (- next-interval last-interval) weight))))
-         (t
-          next-interval))))))
+#+begin_src elisp :noweb-ref element-rescheduler :results silent
+(defun org-incremental-hypothetical-next-interval (old-interval a-factor steps)
+"Calculate the hypothetical next interval after STEPS repetitions."
+(let ((next-interval old-interval))
+    (dotimes (_ steps)
+      (setq next-interval (org-incremental-determine-next-interval next-interval a-factor)))
+    next-interval))
 
-(defun org-drill-hypothetical-next-review-dates ()
-  "Return hypothetical next review dates."
-  (let ((intervals nil))
-    (dotimes (q 6)
-      (push (max (or (car intervals) 0)
-                 (org-drill-hypothetical-next-review-date q))
+(defun org-incremental-hypothetical-next-review-dates (&optional steps-to-predict)
+  "Return a list of the next N hypothetical review intervals.
+Extracts OLD-INTERVAL and A-FACTOR from the properties of the current headline.
+Defaults to predicting the next 5 steps."
+  (let* ((steps (or steps-to-predict 5))
+         ;; Extract properties from the current headline using your properties
+         (old-interval-str (org-entry-get (point) org-incremental-old-interval-property))
+         (a-factor-str (org-entry-get (point) org-incremental-a-factor-property))
+         ;; Parse strings to numbers, defaulting to sensible start values if missing
+         (old-interval (if old-interval-str (string-to-number old-interval-str) 1))
+         (a-factor (if a-factor-str (string-to-number a-factor-str) 2.0))
+         (intervals nil))
+    
+    ;; Generate the list of hypothetical future intervals
+    (dotimes (s steps)
+      (push (org-incremental-hypothetical-next-interval old-interval a-factor (1+ s))
             intervals))
+    
     (reverse intervals)))
 #+end_src
 
