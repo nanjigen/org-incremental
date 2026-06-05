@@ -411,9 +411,17 @@ Integration test using a temporary buffer and ~cl-letf~:
 :ID:       35f2cb30-7887-4e8a-b5c5-c506ddffb082
 :END:
 
+Instead of a hard-coded array of strings, use a getter function to eval ~defcustom~ entries dynamically and so avoid property drift.
 #+begin_src elisp :noweb-ref element-properties :results silent
-(defvar org-incremental-scheduling-properties
-  '("A-FACTOR" "LAST_INTERVAL" "NEW_INTERVAL" "TOTAL_REPEATS"))
+(defun org-incremental-get-all-properties ()
+  "Return a list of active property keys based on user configurations."
+  (list org-incremental-a-factor-property
+        org-incremental-old-interval-property
+        org-incremental-new-interval-property
+        org-incremental-total-repeats-property
+        org-incremental-created-property
+        org-incremental-last-reviewed-property))
+#+end_src
 
 (defvar org-incremental-current-element-uuid nil)
 
