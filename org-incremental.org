@@ -458,12 +458,12 @@ Instead of a hard-coded array of strings, use a getter function to eval ~defcust
   :group 'org-incremental)
 #+end_src
 
-Convert timestamp to org-mode
-#+begin_src elisp :noweb-ref element rescheduler :results silent
+Utility function to convert timestamps to org-mode format. We =car= ~org-time-stamp-formats~ to return only the date to avoid visual clutter in the resultant PROPERTIES drawer.
+#+begin_src elisp :noweb-ref element-rescheduler :results silent
 (defun org-incremental-time-to-inactive-org-timestamp (time)
   "Convert TIME into org-mode timestamp."
   (format-time-string
-   (concat "[" (substring (cdr org-time-stamp-formats) 1 -1) "]")
+   (concat "[" (substring (car org-time-stamp-formats) 1 -1) "]") ;; use car for DATE-ONLY
    time))
 #+end_src
 
