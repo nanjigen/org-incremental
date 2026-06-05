@@ -488,7 +488,7 @@ Test time logic, note that we set a timezone in order to avoid drift:
 :ID:       562514ab-6106-43aa-8a45-cca2695e5d12
 :END:
 
-Lifted from ~org-drill~. Let's use this as a base to calculate an estimate of the next review for the current item.
+Lifted from ~org-drill~. We use this as a base to calculate an estimate of the next review for the current item, should the item feature along the sequence. Factors such as review load, priorities and actual reviews done can effect when an item is actually seen.
 
 #+begin_src elisp :noweb-ref element-rescheduler :results silent
 (defun org-incremental-hypothetical-next-interval (old-interval a-factor steps)
