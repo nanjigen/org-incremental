@@ -519,6 +519,14 @@ Defaults to predicting the next 5 steps."
     (reverse intervals)))
 #+end_src
 
+#+begin_src elisp :noweb-ref element-rescheduler :results silent
+(defun org-incremental-show-future-schedule ()
+  "Display the projected review intervals for the current item in the echo area."
+  (interactive)
+  (let ((intervals (org-incremental-hypothetical-next-review-dates)))
+    (message "Projected future intervals (days): %s" 
+             (mapconcat #'number-to-string intervals ", "))))
+#+end_src
 * Elements
 :PROPERTIES:
 :CREATED:  [2022-03-27 Sun 12:29]
