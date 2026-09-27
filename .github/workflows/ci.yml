@@ -28,10 +28,6 @@ jobs:
           sudo apt-get install -y guix
           guix --version
 
-      - name: Verify Guix manifest
-        run: |
-          guix shell -m manifest.scm -- emacs --version
-
       - name: Tangle literate source
         run: |
           guix shell -m manifest.scm -- \
@@ -45,6 +41,22 @@ jobs:
           test -f org-incremental-scheduler.el
           test -f org-incremental-simple.el
           test -f org-incremental-tests.el
+          test -f org-incremental-hydra.el
+          test -f org-incremental-analysis.el
+          test -f manifest.scm
+
+      - name: Detect unresolved noweb references
+        run: |
+          if grep -nE '<<[^>]+>>' ./*.el; then
+            echo "Unresolved noweb reference found"
+            exit 1
+          fi
+
+      - name: Validate Elisp structure
+        run: |
+          guix shell -m manifest.scm -- \
+            emacs -Q --batch \
+              --eval "(dolist (file '(\"org-incremental-scheduler.el\" \"org-incremental-simple.el\" \"org-incremental.el\" \"org-incremental-tests.el\" \"org-incremental-hydra.el\" \"org-incremental-analysis.el\")) (with-temp-buffer (insert-file-contents file) (emacs-lisp-mode) (check-parens)))"
 
       - name: Byte-compile
         run: |
@@ -54,7 +66,8 @@ jobs:
               -f batch-byte-compile \
               org-incremental-scheduler.el \
               org-incremental-simple.el \
-              org-incremental.el
+              org-incremental.el \
+              org-incremental-tests.el
 
       - name: Run ERT tests
         run: |
