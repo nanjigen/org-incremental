@@ -1687,25 +1687,35 @@ Enter should go to an element
 
 #+begin_src elisp :noweb-ref simple-queue-goto-functions :results silent
 (defun org-incremental-simple-goto-next ()
-  "Rep and go to next outstanding element via a `org-ql' search."
+  "Rotate the current simple queue item and advance the rendered view."
   (interactive)
-  (progn
-    (with-current-buffer "*Org QL View: Training*"
-      (org-incremental-simple-reschedule-head)
-      (org-agenda-next-item 1)
-      (org-incremental-org-brain-agenda))
-    (with-current-buffer "*Org QL View: Training*"
-      (org-incremental-simple-reschedule-body)
-      (org-ql-view-refresh))))
+  (with-current-buffer org-incremental-simple-buffer
+    (org-incremental-simple-reschedule-head)
+    (org-agenda-next-item 1)
+    (org-incremental-simple-reschedule-body)
+    (org-ql-view-refresh)))
 #+end_src
 
 #+begin_src elisp :noweb-ref simple-queue-goto-functions :results silent
-(defun org-incremental-org-brain-agenda ()
-  "Pop org-brain visualise from agenda."
-    (let* ((marker (org-get-at-bol 'org-marker))
-           (id-from-marker (org-id-get marker))
-           (entry-from-id (org-brain-entry-from-id id-from-marker)))
-      (org-brain-visualize entry-from-id)))
+(declare-function org-brain-entry-from-id "org-brain" (id))
+(declare-function org-brain-visualize "org-brain" (entry))
+
+(defun org-incremental-simple-org-brain-visualize ()
+  "Visualize the simple queue item at point when Org Brain is available."
+  (interactive)
+  (unless (require 'org-brain nil t)
+    (user-error "Optional package org-brain is not installed"))
+  (let* ((marker (or (org-get-at-bol 'org-marker)
+                     (org-get-at-bol 'org-hd-marker)))
+         (id (and marker (org-id-get marker))))
+    (unless id
+      (user-error "Queue item has no Org ID"))
+    (org-brain-visualize (org-brain-entry-from-id id))))
+
+(define-obsolete-function-alias
+  'org-incremental-org-brain-agenda
+  #'org-incremental-simple-org-brain-visualize
+  "0.2.0")
 
 #+end_src
 
@@ -1938,9 +1948,11 @@ This is an alternative scheduler that makes use of the length of a que and an it
 
 (defcustom org-incremental-simple-headline-level "level=1"
   "Level of headlines to considered for queing."
+  :type 'string
   :group 'org-incremental)
 
-(defvar org-incremental-simple-que nil)
+(defvar org-incremental-simple-current-queue nil
+  "Active position-based simple queue.")
 #+end_src
 
 *** NEXT Write this to allow multiple lists
@@ -1989,23 +2001,27 @@ Increment all the items included in que:
    (org-element-property :QUE y)))
 #+end_src
 
-Collect org headlines into a que:
-#+begin_src elisp :results silent
-(defun org-incremental-simple-que ()
-  "Construct or check today's simple outstanding que."
-  (interactive)
-  (let* ((dir (directory-files org-incremental-simple-dir t "\.org$" t))
+Collect Org headlines into queue data separately from storing active state:
+#+begin_src elisp :noweb-ref view-simple :results silent
+(defun org-incremental-simple-select ()
+  "Return position-based simple queue elements without changing state."
+  (let* ((dir (directory-files org-incremental-simple-dir t "\\.org\\'" t))
          (query '(and (property "QUE")))
-         (sorting (lambda (x y)
-                    (string-version-lessp
-                     (org-element-property :QUE x)
-                     (org-element-property :QUE y))))
-         (results (org-incremental-selection dir query sorting)))
-    (setq org-incremental-simple-que results)))
+         (sorting #'org-incremental-simple-sorting))
+    (org-incremental-selection dir query sorting)))
+
+(defun org-incremental-simple-refresh-queue ()
+  "Replace `org-incremental-simple-current-queue' with a fresh selection."
+  (interactive)
+  (setq org-incremental-simple-current-queue
+        (org-incremental-simple-select)))
+
+(define-obsolete-function-alias
+  'org-incremental-simple-que #'org-incremental-simple-refresh-queue "0.2.0")
 #+end_src
 
 View the queued items:
-#+begin_src elisp :results silent
+#+begin_src elisp :noweb-ref simple-configurations :results silent
 (defcustom org-incremental-simple-buffer "*org-incremental: Que*"
   "Customizable buffer-name for the simple que."
   :type 'string
@@ -2019,10 +2035,12 @@ View the queued items:
 
 #+begin_src elisp :noweb-ref view-simple :results silent
 (defun org-incremental-view-simple ()
-  "List outstanding elements via a `org-ql' search."
+  "Render the stored simple queue without recomputing it."
   (interactive)
-  (org-incremental-view org-incremental-simple-que "Que" "Training")
-  (org-incremental-org-brain-agenda)) ;; TODO generalize
+  (org-incremental-render-queue
+   org-incremental-simple-current-queue
+   org-incremental-simple-buffer
+   org-incremental-simple-header))
   #+end_src
 
 Example configuration using org-brain.
@@ -2034,11 +2052,26 @@ Example configuration using org-brain.
 
 Collect the total number of entries in the target dir:
 #+begin_src elisp :noweb-ref view-simple :results silent
-(defun org-incremental-number-of-entries (&optional level)
-  "Detemine total que size for simple review"
+(defun org-incremental-number-of-entries (&optional match)
+  "Determine simple queue size using optional Org MATCH expression."
   (length
-   (org-map-entries t "+LEVEL>=2+QUE>=\"1\"" org-incremental-simple-dir)))
+   (org-map-entries t (or match "+LEVEL>=2+QUE>=\"1\"")
+                    org-incremental-simple-dir)))
 
+#+end_src
+
+#+begin_src elisp :noweb-ref tests :results silent
+(ert-deftest test-org-incremental-simple-selection-and-state ()
+  "Simple queue selection returns data separately from stored state."
+  (let ((org-incremental-simple-current-queue '(active)))
+    (cl-letf (((symbol-function 'org-incremental-simple-select)
+               (lambda () '(one two))))
+      (should (equal (org-incremental-simple-refresh-queue) '(one two)))
+      (should (equal org-incremental-simple-current-queue '(one two))))))
+
+(ert-deftest test-org-incremental-simple-does-not-load-org-brain ()
+  "Loading the generic simple scheduler does not load Org Brain."
+  (should-not (featurep 'org-brain)))
 #+end_src
 
 ** Seed dir
@@ -2299,8 +2332,9 @@ Use ~org-transclude~ with a temporary buffer to programmatically generate an up-
 (require 'org-expiry)
 (require 'org-id)
 (require 'org-ql)
+(require 'org-ql-search)
+(require 'org-ql-view)
 (require 'org-incremental-scheduler)
-(require 'org-incremental-simple)
 
 ;;;; Constants
 
@@ -2404,8 +2438,8 @@ See `org-show-set-visibility' for possible values"
 
 ;;; Code:
 (require 'org)
-(require 'org-ql)
-(require 'org-brain)
+(require 'org-incremental)
+(require 'org-ql-view)
 
 <<simple-configurations>>
 
@@ -2417,7 +2451,7 @@ See `org-show-set-visibility' for possible values"
 
 (provide 'org-incremental-simple)
 
-;;; org-incremental.el ends here
+;;; org-incremental-simple.el ends here
 #+end_src
 
 ** org-incremental/org-incremental-scheduler.el
@@ -2509,8 +2543,7 @@ Setup manifest file:
 (specifications->manifest
  '("emacs"
    "emacs-org-contrib"
-   "emacs-org-ql"
-   "emacs-org-brain"))
+   "emacs-org-ql"))
 #+end_src
 
 Run tests in clean room:

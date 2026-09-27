@@ -1,5 +1,4 @@
 (specifications->manifest
  '("emacs"
    "emacs-org-contrib"
-   "emacs-org-ql"
-   "emacs-org-brain"))
+   "emacs-org-ql"))
