@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - develop
+      - main
+  pull_request:
+    branches:
+      - develop
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install Guix
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y guix
+          guix --version
+
+      - name: Verify Guix manifest
+        run: |
+          guix shell -C -m manifest.scm -- emacs --version
+
+      - name: Tangle literate source
+        run: |
+          guix shell -C -m manifest.scm -- \
+            emacs -Q --batch \
+              --eval "(require 'org)" \
+              --eval "(org-babel-tangle-file \"org-incremental.org\")"
+
+      - name: Verify generated files
+        run: |
+          test -f org-incremental.el
+          test -f org-incremental-scheduler.el
+          test -f org-incremental-simple.el
+          test -f org-incremental-tests.el
+
+      - name: Byte-compile
+        run: |
+          guix shell -C -m manifest.scm -- \
+            emacs -Q --batch \
+              -L . \
+              -f batch-byte-compile \
+              org-incremental-scheduler.el \
+              org-incremental-simple.el \
+              org-incremental.el
+
+      - name: Run ERT tests
+        run: |
+          guix shell -C -m manifest.scm -- \
+            emacs -Q --batch \
+              -L . \
+              -l org-incremental-tests.el \
+              -f ert-run-tests-batch-and-exit
