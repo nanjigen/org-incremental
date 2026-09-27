@@ -2032,7 +2032,7 @@ Other:
 #+begin_src elisp :mkdirp yes :noweb yes :noweb-ref license :results silent
 ;;; Header:
 
-;; Author: Daniel Otto
+;; Author: Daniel C
 ;; Version: 0.0
 ;; Package-requires: ((emacs "26.3") (org "9.4"))
 
