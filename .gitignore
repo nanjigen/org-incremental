@@ -1,0 +1,28 @@
+# Ignore everything by default
+*
+
+# Keep canonical project sources
+!/.gitignore
+!/README.org
+!/org-incremental.org
+!/manifest.scm
+
+# Keep GitHub configuration
+!/.github/
+!/.github/**
+ 
+# Keep images
+!/img/
+!/img/**
+
+# Explicit generated/build artifacts
+/incremental-literate.pdf
+/org-incremental.el
+/org-incremental-simple.el
+/org-incremental-analysis.el
+/org-incremental-hydra.el
+/org-incremental-scheduler.el
+/org-incremental-tests.el
+
+# Emacs bytecode
+/*.elc
