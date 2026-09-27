@@ -710,7 +710,7 @@ If wanted, we can further refine our list of actionable candidates by specifying
 (defcustom org-incremental-todo-keywords nil
   "If non-nil, supply list as viable TODO keyword(s)
 to consider as rep-able `org-incremental' entries"
-  :type 'string
+  :type '(repeat string)
   :group 'org-incremental)
 #+end_src
 
@@ -1102,15 +1102,11 @@ See ~org-priority~
 To emulate Supermemo's outstanding que, we need to query due (and overdue) items sourced from the ~org-incremental-directories~ with the ~org-todo-keywords-for-agenda~ list and the =incremental= tag in order to bring up an =agenda=-like view of tasks.
 
 #+begin_src elisp :noweb-ref que-options :results silent
-(defcustom org-incremental-query
-  '(or (and (tags org-incremental-element-tag)
-            (todo org-incremental-todo-keywords)
-            (scheduled :to today))
-       (and (tags org-incremental-element-tag)
-            (todo org-incremental-todo-keywords)
-            (not (scheduled :from today))))
-  "Query to be run by `org-ql'."
-  :type 'sexp ;; TODO should this be 'symbol?
+(defcustom org-incremental-query nil
+  "Custom `org-ql' query used for the outstanding queue.
+When nil, derive a query from `org-incremental-element-tag' and
+`org-incremental-todo-keywords'."
+  :type '(choice (const :tag "Derived default" nil) sexp)
   :group 'org-incremental)
 #+end_src
 
@@ -1145,6 +1141,27 @@ on repository fixtures or the user's Org configuration.
                          nil)))
           (should (= (length results) 1))
           (should (equal (org-element-property :raw-value (car results)) "Due")))
+      (delete-file file))))
+
+(ert-deftest test-org-incremental-select-outstanding-due-items ()
+  "Default queue computation includes due items and excludes future items."
+  (let ((file (make-temp-file
+               "org-incremental-due-test-" nil ".org"
+               (concat "#+TODO: NEXT TODO | DONE\n"
+                       "* NEXT Due :incremental:\nSCHEDULED: <2000-01-01>\n"
+                       "* NEXT Future :incremental:\nSCHEDULED: <2999-01-01>\n"
+                       "* NEXT Untagged\nSCHEDULED: <2000-01-01>\n"))))
+    (unwind-protect
+        (let ((org-incremental-directories (list file))
+              (org-incremental-element-tag "incremental")
+              (org-incremental-todo-keywords '("NEXT")))
+          (let ((results (org-incremental-select-outstanding)))
+            (should (= (length results) 1))
+            (should (equal (org-element-property :raw-value (car results))
+                           "Due"))))
+      (let ((buffer (find-buffer-visiting file)))
+        (when buffer
+          (kill-buffer buffer)))
       (delete-file file))))
 
 #+end_src
@@ -1281,6 +1298,17 @@ This should actually be able to construct a que for any given day?
 
 Where am I running the test for current-shift?
 #+begin_src elisp :noweb-ref que-funcs :results silent
+(defun org-incremental--default-query ()
+  "Build the default outstanding query from current configuration."
+  (let* ((tag-clause (list 'tags org-incremental-element-tag))
+         (todo-clause (and org-incremental-todo-keywords
+                           (cons 'todo org-incremental-todo-keywords)))
+         (eligibility (delq nil (list tag-clause todo-clause))))
+    (list 'or
+          (cons 'and (append eligibility '((scheduled :to today))))
+          (cons 'and (append eligibility
+                             '((not (scheduled :from today))))))))
+
 (defun org-incremental-select-outstanding (&optional sources query sort)
   "Return outstanding elements selected from SOURCES.
 SOURCES defaults to `org-incremental-directories', QUERY defaults to
@@ -1288,7 +1316,7 @@ SOURCES defaults to `org-incremental-directories', QUERY defaults to
 This function computes queue data without changing session state or UI."
   (org-incremental-selection
    (or sources org-incremental-directories)
-   (or query org-incremental-query)
+   (or query org-incremental-query (org-incremental--default-query))
    (or sort '(date priority))))
 
 (defun org-incremental-refresh-queue ()
@@ -1462,7 +1490,8 @@ modified buffers before ending the session."
   (when (buffer-live-p org-incremental-session-buffer)
     (with-current-buffer org-incremental-session-buffer
       (when org-incremental-mode
-        (org-incremental-mode -1))))
+        (org-incremental-mode -1))
+      (widen)))
   (setq org-incremental-current-queue nil
         org-incremental-current-queue-position 0
         org-incremental-session-buffer nil)
@@ -1667,7 +1696,8 @@ Go back to recently completed via the =org-incremental-view-recent= function
                 (should (= org-incremental-current-queue-position 1))
                 (should (equal (org-get-heading t t t t) "Second"))
                 (org-incremental-end-session)
-                (should-not org-incremental-mode)))))
+                (should-not org-incremental-mode)
+                (should-not (buffer-narrowed-p))))))
       (when (buffer-live-p buffer)
         (kill-buffer buffer)))))
 #+end_src
