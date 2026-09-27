@@ -415,7 +415,7 @@ Test the plist (no org mocking required)
 Apply the base algorithm to existing ~:PROPERTIES:~ keys and then write the new interval, moving the previous interval into the "=OLD_INTERVAL=" key.
 The element is rescheduled using ~org~'s internal =org-schedule= function which will be used later for building and sorting a que.
 
-#+begin_src elisp :noweb-ref element-rescheduler :results silent
+#+begin_src elisp :noweb-ref element-review-functions :results silent
 (defun org-incremental-review-item () ;; TODO use arguments
  "Collect values from headline at point, compute updates, and apply mutations."
   (interactive)
@@ -509,7 +509,7 @@ Integration test using a temporary buffer and ~cl-letf~:
 :END:
 
 Instead of a hard-coded array of strings, use a getter function to eval ~defcustom~ entries dynamically and so avoid property drift.
-#+begin_src elisp :noweb-ref element-properties :results silent
+#+begin_src elisp :noweb-ref element-property-functions :results silent
 (defun org-incremental-get-all-properties ()
   "Return a list of active property keys based on user configurations."
   (list org-incremental-a-factor-property
@@ -588,12 +588,12 @@ Test time logic using a time encoded in the test process's local timezone:
 
 Lifted from ~org-drill~. We use this as a base to calculate an estimate of the next review for the current item, should the item feature along the sequence. Factors such as review load, priorities and actual reviews done can effect when an item is actually seen.
 
-#+begin_src elisp :noweb-ref element-rescheduler :results silent
-(defun org-incremental-hypothetical-next-interval (old-interval a-factor steps)
+#+begin_src elisp :noweb-ref element-review-functions :results silent
+(defun org-incremental-hypothetical-next-interval (old-interval factor steps)
 "Calculate the hypothetical next interval after STEPS repetitions."
 (let ((next-interval old-interval))
     (dotimes (_ steps)
-      (setq next-interval (org-incremental-determine-next-interval next-interval a-factor)))
+      (setq next-interval (org-incremental-determine-next-interval next-interval factor)))
     next-interval))
 
 (defun org-incremental-hypothetical-next-review-dates (&optional steps-to-predict)
@@ -669,7 +669,7 @@ Check that ~OLD_INTERVAL~ and ~A_FACTOR~ properties are correctly read from curr
 (ert 'test-org-incremental-hypothetical-next-review-dates)
 #+end_src
 
-#+begin_src elisp :noweb-ref element-rescheduler :results silent
+#+begin_src elisp :noweb-ref element-review-functions :results silent
 (defun org-incremental-show-future-schedule ()
   "Display the projected review intervals for the current item in the echo area."
   (interactive)
@@ -736,7 +736,8 @@ Here we perform various checks over the element in question
 #+begin_src elisp :noweb-ref element-checks :results silent
 (defun org-incremental-operable-entry-p (marker)
   "Is MARKER, or the point, in an operable TODO?"
-    (member (org-get-todo-state) org-incremental-todo-keywords))
+  (org-with-point-at (or marker (point))
+    (member (org-get-todo-state) org-incremental-todo-keywords)))
 
 #+end_src
 
@@ -910,39 +911,22 @@ Bring in some functionality for interacting with data stored the ~:PROPERTIES:~ 
       (should (= (org-incremental-element-old-interval) 3))
       (should (= (org-incremental-element-current-interval) 7))
       (should (= (org-incremental-element-a-factor) 1.5))
-      (should (= (org-incremental-element-total-repeats) 4)))))
+      (should (= (org-incremental-element-total-repeats) 4))
+      (should (equal (org-incremental-get-element-data)
+                     '(:old-interval 3 :new-interval 7
+                       :total-repeats 4 :a-factor 1.5
+                       :last-reviewed nil))))))
 #+end_src
 
 #+begin_src elisp :noweb-ref element-stats :results silent
 (defun org-incremental-get-element-data ()
-  "Returns a list of 3 elements, containing all the stored recall
-  data for the element at point:
-- LAST-INTERVAL is the interval in days that was used to schedule the element's
-  current review date.
-- REPEATS is the number of times the element has been repeated.
-- A-FACTOR is the number by which to space out a repped element.
-"
-  (let ((learn-str (org-entry-get (point) "LEARN_DATA"))
-        (repeats (org-incremental-entry-total-repeats :missing)))
-    (cond
-     (learn-str
-      (let ((learn-data (and learn-str
-                             (read learn-str))))
-        (list (nth 0 learn-data)        ; last interval
-              (nth 1 learn-data)        ; repetitions
-              (org-incremental-entry-failure-count)
-              (nth 1 learn-data)
-              (org-incremental-entry-last-quality)
-              (nth 2 learn-data)        ; EF
-              )))
-     ((not (eql :missing repeats))
-      (list (org-incremental-entry-last-interval)
-            (org-incremental-entry-repeats-since-fail)
-            (org-incremental-entry-total-repeats)
-            (org-incremental-entry-average-quality)
-            (org-incremental-entry-ease)))
-     (t  ; virgin element
-      (list 0 0 0 0 nil nil)))))
+  "Return the current element's scheduling data as a plist."
+  (list :old-interval (org-incremental-element-old-interval)
+        :new-interval (org-incremental-element-current-interval)
+        :total-repeats (org-incremental-element-total-repeats)
+        :a-factor (org-incremental-element-a-factor)
+        :last-reviewed
+        (org-entry-get (point) org-incremental-last-reviewed-property)))
 #+end_src
 
 #+begin_src elisp :results silent
@@ -997,7 +981,7 @@ We need to introduce checks for valid A-factor and interval values.
 This is for un-incrementalising an item - in Supermemo parlance this is known as 'forgetting'.
 #+begin_src elisp :noweb-ref element-deletion-functions :results silent
 (defun org-incremental-strip-entry-data ()
-  (dolist (prop org-incremental-scheduling-properties)
+  (dolist (prop (org-incremental-get-all-properties))
     (org-delete-property prop))
   (org-schedule '(4)))
 #+end_src
@@ -1016,11 +1000,13 @@ values as `org-incremental-scope'."
      ((null scope)
       ;; Scope is the current buffer. This means we can use
       ;; `org-delete-property-globally', which is faster.
-      (dolist (prop org-incremental-scheduling-properties)
+      (dolist (prop (org-incremental-get-all-properties))
         (org-delete-property-globally prop))
-      (org-incremental-map-entries (lambda () (org-schedule '(4))) scope))
+      (org-map-entries (lambda () (org-schedule '(4)))
+                       (concat "+" org-incremental-element-tag) scope))
      (t
-      (org-incremental-map-entries 'org-incremental-strip-entry-data scope)))
+      (org-map-entries #'org-incremental-strip-entry-data
+                       (concat "+" org-incremental-element-tag) scope)))
     (message "Done.")))
 #+end_src
 
@@ -1050,16 +1036,22 @@ Inherit from custom priority.
 #+end_src
 
 #+begin_src elisp :noweb-ref priority-system :results silent
-(defcustom org-incremental-default-priority 'org-default-priority ;; TODO how to make this use system defaults?
-  "Use a custom set of default priorities, ")
+(defcustom org-incremental-default-priority org-default-priority
+  "Default priority used when initializing an incremental element."
+  :type 'integer
+  :group 'org-incremental)
 
-(defcustom org-incremental-priority-highest 'org-priority-highest
+(defcustom org-incremental-priority-highest org-priority-highest
   "Set a custom highest priority for use in `incremental' items
-Use the current org-priority if unset")
+Use the current org-priority if unset"
+  :type 'integer
+  :group 'org-incremental)
 
-(defcustom org-incremental-priority-lowest 'org-priority-lowest
+(defcustom org-incremental-priority-lowest org-priority-lowest
   "Set a custom lowest priority for use in `incremental' items
-Use the current org-priority if unset")
+Use the current org-priority if unset"
+  :type 'integer
+  :group 'org-incremental)
 
 #+end_src
 
@@ -1082,7 +1074,9 @@ Experimenting with local
 This might be useful for setting whether a created subtree implicitly inherits a parent priority (via cookies), inherits it explicitly (the priority is set textually) or via a custom function
 #+begin_src elisp :noweb-ref priority-system :results silent
 (defcustom org-incremental-priority-inheret 'default
-  "Set how priorities are inherited amongst subtrees")
+  "Set how priorities are inherited amongst subtrees."
+  :type 'symbol
+  :group 'org-incremental)
 #+end_src
 
 #+begin_src elisp :noweb yes :noweb-ref priority-system :results silent
@@ -1647,6 +1641,35 @@ Go back to recently completed via the =org-incremental-view-recent= function
         (should-not org-incremental-mode)
         (should-not org-incremental-current-queue)
         (should (= org-incremental-current-queue-position 0))))))
+
+(ert-deftest test-org-incremental-navigation-visits-queue-markers ()
+  "Navigation visits stored Org markers without relying on a view buffer."
+  (let ((buffer (generate-new-buffer " *org-incremental-navigation*")))
+    (unwind-protect
+        (with-current-buffer buffer
+          (org-mode)
+          (insert "* First\nBody\n* Second\nBody\n")
+          (goto-char (point-min))
+          (let ((first (org-element-at-point)))
+            (org-element-put-property first :org-marker (point-marker))
+            (re-search-forward "^\\* Second")
+            (beginning-of-line)
+            (let ((second (org-element-at-point))
+                  (org-incremental-current-queue-position 0)
+                  (org-incremental-session-buffer nil)
+                  (org-incremental-save-buffers-after-writing-sessions-p nil))
+              (org-element-put-property second :org-marker (point-marker))
+              (let ((org-incremental-current-queue (list first second)))
+                (org-incremental--visit-current-element)
+                (should org-incremental-mode)
+                (should (equal (org-get-heading t t t t) "First"))
+                (org-incremental-goto-next)
+                (should (= org-incremental-current-queue-position 1))
+                (should (equal (org-get-heading t t t t) "Second"))
+                (org-incremental-end-session)
+                (should-not org-incremental-mode)))))
+      (when (buffer-live-p buffer)
+        (kill-buffer buffer)))))
 #+end_src
 
 Maybe use map-entries?
@@ -2008,7 +2031,9 @@ Collect Org headlines into queue data separately from storing active state:
   (let* ((dir (directory-files org-incremental-simple-dir t "\\.org\\'" t))
          (query '(and (property "QUE")))
          (sorting #'org-incremental-simple-sorting))
-    (org-incremental-selection dir query sorting)))
+    (org-ql-select dir query
+      :action 'element-with-markers
+      :sort sorting)))
 
 (defun org-incremental-simple-refresh-queue ()
   "Replace `org-incremental-simple-current-queue' with a fresh selection."
@@ -2037,10 +2062,12 @@ View the queued items:
 (defun org-incremental-view-simple ()
   "Render the stored simple queue without recomputing it."
   (interactive)
-  (org-incremental-render-queue
-   org-incremental-simple-current-queue
-   org-incremental-simple-buffer
-   org-incremental-simple-header))
+  (let ((strings (mapcar #'org-ql-view--format-element
+                         org-incremental-simple-current-queue)))
+    (org-ql-view--display
+     :buffer org-incremental-simple-buffer
+     :header org-incremental-simple-header
+     :string (mapconcat #'identity strings "\n"))))
   #+end_src
 
 Example configuration using org-brain.
@@ -2264,13 +2291,13 @@ Other:
 #+begin_src elisp :mkdirp yes :noweb yes :noweb-ref license :results silent
 ;;; Header:
 
-;; Author: Daniel C
-;; Version: 0.1.0
-;; Package-requires: ((emacs "26.3") (org "9.4"))
+;; Author: Daniel Otto
+;; Version: 0.2.0
+;; Package-Requires: ((emacs "27.1") (org "9.4") (org-contrib "0.8") (org-ql "0.8.10"))
 
 ;; URL: https://github.com/nanjigen/org-incremental
 
-;; Copyright (C) 2021-2023 Daniel Otto
+;; Copyright (C) 2021-2026 Daniel Otto
 
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -2378,6 +2405,8 @@ See `org-show-set-visibility' for possible values"
 
 <<element-properties>>
 
+<<element-property-functions>>
+
 <<que-vars>>
 
 <<midnight-shift-vars>>
@@ -2392,20 +2421,22 @@ See `org-show-set-visibility' for possible values"
 <<minor-mode>>
 
 ;;; Elements
-;; Initialize elements
-<<element-creation-functions>>
-
 ;; Check elements
 <<element-checks>>
 
 ;; Element stats
 <<element-stats>>
 
-;; Remove elements
-<<element-deletion-functions>>
-
 ;; Priority
 <<priority-system>>
+
+;; Initialize and review elements
+<<element-creation-functions>>
+
+<<element-review-functions>>
+
+;; Remove elements
+<<element-deletion-functions>>
 
 ;; Queue
 <<midnight-shift-funcs>>
@@ -2433,12 +2464,13 @@ See `org-show-set-visibility' for possible values"
 
 #+begin_src elisp :mkdirp yes :noweb yes :tangle org-incremental-simple.el :results silent
 ;;; org-incremental-simple.el --- Incremental Writing System for org-mode -*- lexical-binding: t; -*-
+<<license>>
 
 ;;;Commentary
 
 ;;; Code:
 (require 'org)
-(require 'org-incremental)
+(require 'org-ql)
 (require 'org-ql-view)
 
 <<simple-configurations>>
