@@ -1176,6 +1176,9 @@ The position is a zero-based index into the current queue.
 (defvar org-incremental-current-queue-position 0
   "Zero-based position in `org-incremental-current-queue'.")
 
+(defvar org-incremental-session-buffer nil
+  "Buffer currently displaying the active session element.")
+
 #+end_src
 
 *** Midnight shift
@@ -1383,26 +1386,27 @@ The ~:buffer:~ and ~:header~ properties should be customizable variables.
 #+end_src
 
 #+begin_src elisp :noweb-ref queue-views :results silent
-(defun org-incremental-view (results buffer header)
-  "Visualize outstanding elements via `org-ql-view--display'."
-  (let* ((strings (-map #'org-ql-view--format-element results)))
+(defun org-incremental-render-queue (results &optional buffer header)
+  "Render RESULTS without recomputing queue or session state.
+BUFFER and HEADER default to `org-incremental-buffer' and
+`org-incremental-header'."
+  (let ((strings (mapcar #'org-ql-view--format-element results)))
     (org-ql-view--display
-      :buffer buffer
-      :header header ;; FIXME Not registered as an *Org QL* buffer
-      :string (s-join "\n" strings))))
+     :buffer (or buffer org-incremental-buffer)
+     :header (or header org-incremental-header)
+     :string (mapconcat #'identity strings "\n"))))
+
+(defun org-incremental-view (results &optional buffer header)
+  "Compatibility wrapper for rendering RESULTS."
+  (org-incremental-render-queue results buffer header))
 
 #+end_src
 
 #+begin_src elisp :noweb-ref queue-views :results silent
-(defun org-incremental-view-outstanding (results buffer header)
-  "Visualize outstanding elements via `org-ql-view--display'."
+(defun org-incremental-view-outstanding ()
+  "Render the active session queue without recomputing it."
   (interactive)
-  (let* ((results (org-incremental-outstanding-que))
-         (strings (-map #'org-ql-view--format-element results)))
-    (org-ql-view--display
-      :buffer buffer
-      :header header ;; FIXME Not registered as an *Org QL* buffer
-      :string (s-join "\n" strings))))
+  (org-incremental-render-queue org-incremental-current-queue))
 
 #+end_src
 
@@ -1413,22 +1417,126 @@ The ~:buffer:~ and ~:header~ properties should be customizable variables.
 :ID:       44101b69-8ac3-46c4-b364-22999cb9e6d9
 :END:
 
-Finally, we wrap everything up in the org ~incremental-start-session~ command. This should check for an existing session, and start one if there is not or it is stale.
-
-The =agenda= switching functions should be reliant on a user customizable variable.
+The public `org-incremental' command owns the session lifecycle.  Queue
+selection, rendering, and element visiting remain separate operations.
 
 #+begin_src elisp :noweb-ref start-session :results silent
-(defun org-incremental-start-session ()
-  "Entry function for starting a incremental writing session."
-  (interactive)
-  (org-incremental-view
-   org-incremental-outstanding-que ;; FIXME this should be run as a function
-   org-incremental-buffer org-incremental-header)
-  (when (string= (buffer-name (current-buffer)) org-incremental-buffer)
-    (org-agenda-switch-to)
-    ;; (org-agenda-goto)
-    (org-narrow-to-subtree)))
+(defun org-incremental-current-element ()
+  "Return the element at the active queue position, or nil."
+  (nth org-incremental-current-queue-position org-incremental-current-queue))
 
+(defun org-incremental--visit-element (element)
+  "Visit ELEMENT and mark its buffer as the active session buffer."
+  (let ((marker (org-element-property :org-marker element)))
+    (unless (and (markerp marker) (marker-buffer marker))
+      (error "Queue element has no live Org marker"))
+    (when (buffer-live-p org-incremental-session-buffer)
+      (with-current-buffer org-incremental-session-buffer
+        (when org-incremental-mode
+          (org-incremental-mode -1))))
+    (switch-to-buffer (marker-buffer marker))
+    (widen)
+    (goto-char marker)
+    (org-back-to-heading)
+    (org-narrow-to-subtree)
+    (org-incremental-mode 1)
+    (setq org-incremental-session-buffer (current-buffer))
+    element))
+
+(defun org-incremental--visit-current-element ()
+  "Visit the element at the active queue position."
+  (let ((element (org-incremental-current-element)))
+    (when element
+      (org-incremental--visit-element element))))
+
+(defun org-incremental--move-queue-position (delta)
+  "Move DELTA places in the active queue and return the new element.
+Return nil without changing state when the target is outside the queue."
+  (let ((target (+ org-incremental-current-queue-position delta)))
+    (when (and (>= target 0)
+               (< target (length org-incremental-current-queue)))
+      (setq org-incremental-current-queue-position target)
+      (org-incremental-current-element))))
+
+(defun org-incremental-end-session ()
+  "End the active session and clear its queue state.
+Scheduling properties are not changed.  When configured, offer to save
+modified buffers before ending the session."
+  (interactive)
+  (when org-incremental-save-buffers-after-writing-sessions-p
+    (save-some-buffers))
+  (when (buffer-live-p org-incremental-session-buffer)
+    (with-current-buffer org-incremental-session-buffer
+      (when org-incremental-mode
+        (org-incremental-mode -1))))
+  (setq org-incremental-current-queue nil
+        org-incremental-current-queue-position 0
+        org-incremental-session-buffer nil)
+  (message "Org incremental session ended"))
+
+(defun org-incremental ()
+  "Start an incremental writing session and visit its first element."
+  (interactive)
+  (when (or org-incremental-mode org-incremental-current-queue)
+    (user-error "An org-incremental session is already active"))
+  (if (org-incremental-refresh-queue)
+      (progn
+        (org-incremental--visit-current-element)
+        org-incremental-current-queue)
+    (org-incremental-end-session)
+    (message "No outstanding incremental elements")
+    nil))
+
+(define-obsolete-function-alias
+  'org-incremental-start-session #'org-incremental "0.2.0")
+
+#+end_src
+
+#+begin_src elisp :noweb-ref tests :results silent
+(ert-deftest test-org-incremental-session-initialization ()
+  "Starting a session stores its queue, position, and active mode."
+  (with-temp-buffer
+    (org-mode)
+    (let ((org-incremental-current-queue nil)
+          (org-incremental-current-queue-position 9))
+      (cl-letf (((symbol-function 'org-incremental-refresh-queue)
+                 (lambda ()
+                   (setq org-incremental-current-queue '(first second)
+                         org-incremental-current-queue-position 0)))
+                ((symbol-function 'org-incremental--visit-current-element)
+                 (lambda () (org-incremental-mode 1))))
+        (should (equal (org-incremental) '(first second)))
+        (should org-incremental-mode)
+        (should (= org-incremental-current-queue-position 0))))))
+
+(ert-deftest test-org-incremental-empty-session ()
+  "An empty selection leaves no active session."
+  (with-temp-buffer
+    (org-mode)
+    (let ((org-incremental-current-queue nil))
+      (cl-letf (((symbol-function 'org-incremental-refresh-queue)
+                 (lambda () nil)))
+        (should-not (org-incremental))
+        (should-not org-incremental-mode)
+        (should-not org-incremental-current-queue)))))
+
+(ert-deftest test-org-incremental-end-session-preserves-properties ()
+  "Ending a session clears session state without changing Org metadata."
+  (with-temp-buffer
+    (org-mode)
+    (insert "* Item\n:PROPERTIES:\n:NEW_INTERVAL: 4\n:END:\n")
+    (goto-char (point-min))
+    (let ((org-incremental-current-queue '(item))
+          (org-incremental-current-queue-position 0)
+          (org-incremental-session-buffer (current-buffer))
+          (org-incremental-save-buffers-after-writing-sessions-p nil))
+      (org-incremental-mode 1)
+      (org-incremental-end-session)
+      (should-not org-incremental-mode)
+      (should-not org-incremental-current-queue)
+      (should-not org-incremental-session-buffer)
+      (should (= org-incremental-current-queue-position 0))
+      (should (equal (org-entry-get (point) "NEW_INTERVAL") "4")))))
 #+end_src
 
 ** NEXT [#O] Incremental repped today                            :incremental:
@@ -1491,25 +1599,13 @@ https://github.com/alphapapa/org-ql#listing--acting-on-results
 =org-ql-view--buffer=
 #+begin_src elisp :noweb-ref queue-goto-functions :results silent
 (defun org-incremental-goto-next ()
-  "Rep and go to next outstanding element via a `org-ql' search"
+  "Visit the next element, or end the session when the queue is exhausted."
   (interactive)
-  ;; (if org-incremental-mode ;; TODO make mode global
-      (with-current-buffer (current-buffer) ;; TODO Can I make a better test?
-      (progn
-        (if (org-incremental-entry-repped-today-p) nil
-          (org-incremental-smart-reschedule))
-        (save-buffer)
-        (kill-current-buffer)
-        (org-incremental-view-outstanding))
-        ;; (org-incremental-mode 0)
-        ;; (org-ql-view-refresh)
-        (with-current-buffer "*Org QL View: Incremental Elements*"
-          (org-agenda-switch-to)
-          (org-narrow-to-subtree)
-          ;; (org-incremental-mode 1)
-          ))
-    ;; (error "Not in incremental session"))
-)
+  (unless org-incremental-mode
+    (user-error "Not in an org-incremental session"))
+  (if (org-incremental--move-queue-position 1)
+      (org-incremental--visit-current-element)
+    (org-incremental-end-session)))
 #+end_src
 
 ** NEXT goto-previous function
@@ -1520,17 +1616,37 @@ https://github.com/alphapapa/org-ql#listing--acting-on-results
 Go back to recently completed via the =org-incremental-view-recent= function
 #+begin_src elisp :noweb-ref queue-goto-functions :results silent
 (defun org-incremental-goto-previous ()
-  "Rep and go to next outstanding element via a `org-ql' search"
+  "Visit the previous element in the active session queue."
   (interactive)
-  (if org-incremental-mode
-      (progn
-        (org-incremental-view-outstanding)
-        ;; (org-ql-view-refresh)
-        (with-current-buffer "*Org QL View: Incremental Elements*"
-          (org-agenda-switch-to)
-          (org-narrow-to-subtree)))
-    (error "Not in incremental session")))
+  (unless org-incremental-mode
+    (user-error "Not in an org-incremental session"))
+  (if (org-incremental--move-queue-position -1)
+      (org-incremental--visit-current-element)
+    (user-error "Already at the first queue element")))
 
+#+end_src
+
+#+begin_src elisp :noweb-ref tests :results silent
+(ert-deftest test-org-incremental-queue-navigation-state ()
+  "Navigation advances session state and ends explicitly at queue exhaustion."
+  (with-temp-buffer
+    (org-mode)
+    (let ((org-incremental-current-queue '(first second))
+          (org-incremental-current-queue-position 0)
+          (org-incremental-session-buffer (current-buffer))
+          (org-incremental-save-buffers-after-writing-sessions-p nil)
+          visited)
+      (org-incremental-mode 1)
+      (cl-letf (((symbol-function 'org-incremental--visit-current-element)
+                 (lambda ()
+                   (setq visited (org-incremental-current-element)))))
+        (org-incremental-goto-next)
+        (should (eq visited 'second))
+        (should (= org-incremental-current-queue-position 1))
+        (org-incremental-goto-next)
+        (should-not org-incremental-mode)
+        (should-not org-incremental-current-queue)
+        (should (= org-incremental-current-queue-position 0))))))
 #+end_src
 
 Maybe use map-entries?
@@ -1782,10 +1898,12 @@ https://github.com/sp1ff/elfeed-score
 :END:
 
 #+begin_src emacs-lisp :noweb yes :noweb-ref minor-mode :results silent
- (define-minor-mode org-incremental-mode
-   "Incremental writing for org-mode"
-   :lighter "org-incremental-session"
-   :keymap)
+(define-minor-mode org-incremental-mode
+  "Mark the current Org buffer as the active incremental session buffer.
+Start a session with `org-incremental' and finish it with
+`org-incremental-end-session'."
+  :lighter " OrgInc"
+  :keymap nil)
 #+end_src
 
 Check whether buffer is an incrementalised one.
@@ -1801,19 +1919,8 @@ Check whether buffer is an incrementalised one.
           (match-string 2))))))
 #+end_src
 
-#+begin_src elisp :results silent
-(defun org-incremental ()
-  "Start an interactive org-incremental session"
-  (interactive)
-  (if org-incremental-mode
-      (error "Already in an incremental writing session")
-    (org-incremental-mode 1))
-  (org-incremental-view-outstanding)
-  (with-current-buffer "*Org QL View: Incremental Elements*"
-    (org-agenda-switch-to)
-    (org-narrow-to-subtree)))
-
-#+end_src
+The public session entry point is `org-incremental', defined with the queue
+lifecycle above.
 
 * PROJECT Simple que based
 :PROPERTIES:
