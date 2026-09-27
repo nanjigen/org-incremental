@@ -146,7 +146,7 @@ end
 
 We can see here that the function prints up to the 5th position:
 #+begin_src lua :noweb yes :var a_factor=(eval 'a-factor) :results output pp
-«geometric-sequence-lua»
+<<geometric-sequence-lua>>
 print_seq(1, a_factor, 5)
 #+end_src
 
@@ -162,7 +162,7 @@ print_seq(1, a_factor, 5)
 #+BEGIN_SRC latex :results graphics file :file img/progression.png :noweb yes :export no
 % \pgfsetxvec{\pgfpoint{1.5cm}{0cm}}
 \begin{luacode}
-  «geometric-sequence-lua»
+  <<geometric-sequence-lua>>
 
   function print_seq (a, r, n)
   GeoSeq(a, r, n)
@@ -2090,7 +2090,7 @@ Use ~org-transclude~ with a temporary buffer to programmatically generate an up-
 #+begin_src elisp :mkdirp yes :noweb yes :tangle org-incremental.el :results silent
 ;;; org-incremental.el --- Incremental Writing System for org-mode -*- lexical-binding: t; -*-
 
-«license»
+<<license>>
 ;;; Code:
 
 ;;;; Requirements
@@ -2114,7 +2114,7 @@ Customizations
   :group 'external
   :group 'text)
 
-«a-factor»
+<<a-factor>>
 #+end_src
 
 Prompt selections for saving and committing after sessions.
@@ -2143,49 +2143,49 @@ See `org-show-set-visibility' for possible values"
 
 #+begin_src elisp :mkdirp yes :noweb yes :tangle org-incremental.el :results silent
 
-«element-properties»
+<<element-properties>>
 
-«que-vars»
+<<que-vars>>
 
-«midnight-shift-vars»
+<<midnight-shift-vars>>
 
-«element-options»
+<<element-options>>
 
-«midnight-shift-options»
+<<midnight-shift-options>>
 
-«que-options»
+<<que-options>>
 
 ;; Mode
-«minor-mode»
+<<minor-mode>>
 
 ;;; Elements
-«element-properties»
+<<element-properties>>
 
 ;; Initialize elements
-«element-creation-functions»
+<<element-creation-functions>>
 
 ;; Check elements
-«element-checks»
+<<element-checks>>
 
 ;; Element stats
-«element-stats»
+<<element-stats>>
 
 ;; Remove elements
-«element-deletion-functions»
+<<element-deletion-functions>>
 
 ;; Priority
-«priority-system»
+<<priority-system>>
 
 ;; Queue
-«midnight-shift-funcs»
+<<midnight-shift-funcs>>
 
-«que-funcs»
+<<que-funcs>>
 
-«queue-views»
+<<queue-views>>
 
-«start-session»
+<<start-session>>
 
-«queue-goto-functions»
+<<queue-goto-functions>>
 
 ;;; Footer
 
@@ -2210,13 +2210,13 @@ See `org-show-set-visibility' for possible values"
 (require 'org-ql)
 (require 'org-brain)
 
-«simple-configurations»
+<<simple-configurations>>
 
-«view-simple»
+<<view-simple>>
 
-«simple-reschedule»
+<<simple-reschedule>>
 
-«simple-queue-goto-functions»
+<<simple-queue-goto-functions>>
 
 (provide 'org-incremental-simple)
 
@@ -2231,14 +2231,14 @@ See `org-show-set-visibility' for possible values"
 
 #+begin_src elisp :mkdirp yes :noweb yes :tangle org-incremental-scheduler.el :results silent
 ;;; org-incremental-scheduler.el --- Incremental Writing System for org-mode -*- lexical-binding: t; -*-
-«license»
+<<license>>
 
 ;;; Code
 (require 'org)
 
-«spacing-algo»
+<<spacing-algo>>
 
-«element-rescheduler»
+<<element-rescheduler>>
 
 ;;; Footer
 
@@ -2255,7 +2255,7 @@ See `org-show-set-visibility' for possible values"
 
 #+begin_src elisp :mkdirp yes :noweb yes :tangle org-incremental-hydra.el :results silent
 ;;; org-incremental-hdyra.el --- Incremental Writing System for org-mode -*- lexical-binding: t; -*-
-«license»
+<<license>>
 #+end_src
 
 ** org-incremental/org-incremental-analysis.el
@@ -2266,7 +2266,7 @@ See `org-show-set-visibility' for possible values"
 
 #+begin_src elisp :mkdirp yes :noweb yes :tangle org-incremental-analysis.el :results silent
 ;;; org-incremental-analysis.el --- Incremental Writing System for org-mode -*- lexical-binding: t; -*-
-«license»
+<<license>>
 #+end_src
 
 ** org-incremental/tests.el
@@ -2283,7 +2283,7 @@ See `org-show-set-visibility' for possible values"
 (require 'org-incremental-simple)
 (require 'org-incremental-scheduler)
 
-«tests»
+<<tests>>
 #+end_src
 
 * Run tests
@@ -2330,8 +2330,3 @@ guix shell -C -m manifest.scm -- emacs -Q --batch -L . -l org-incremental-tests.
 :CREATED:  [2021-08-17 Tue 22:49]
 :ID:       e99d9699-e0df-4736-b63f-cb6a9ced3142
 :END:
-
-# Local Variables:
-# org-babel-noweb-wrap-start: "«"
-# org-babel-noweb-wrap-end: "»"
-# End:
