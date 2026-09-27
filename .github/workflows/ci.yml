@@ -30,11 +30,11 @@ jobs:
 
       - name: Verify Guix manifest
         run: |
-          guix shell -C -m manifest.scm -- emacs --version
+          guix shell -m manifest.scm -- emacs --version
 
       - name: Tangle literate source
         run: |
-          guix shell -C -m manifest.scm -- \
+          guix shell -m manifest.scm -- \
             emacs -Q --batch \
               --eval "(require 'org)" \
               --eval "(org-babel-tangle-file \"org-incremental.org\")"
@@ -48,7 +48,7 @@ jobs:
 
       - name: Byte-compile
         run: |
-          guix shell -C -m manifest.scm -- \
+          guix shell -m manifest.scm -- \
             emacs -Q --batch \
               -L . \
               -f batch-byte-compile \
@@ -58,7 +58,7 @@ jobs:
 
       - name: Run ERT tests
         run: |
-          guix shell -C -m manifest.scm -- \
+          guix shell -m manifest.scm -- \
             emacs -Q --batch \
               -L . \
               -l org-incremental-tests.el \
