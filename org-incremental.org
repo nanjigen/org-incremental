@@ -35,7 +35,7 @@ Features:
 :ID:       a981430d-1319-4d5a-b036-c1478fdf7cd4
 :END:
 
-** NEXT [#5] Why incremental writing?                            :incremental:
+** NEXT [#5] Why incremental writing?                             :incremental:
 SCHEDULED: <2023-03-15 Wed>
 :PROPERTIES:
 :CREATED:  [2021-07-26 Mon 17:42]
@@ -53,7 +53,9 @@ The spacing effect is a well-known psychological phenomenon that suggests that l
 
 Leveraging the spacing effect in the form of incremental writing allows a writer works on multiple writing projects 'simultaneously', rather than focusing on just one project for an extended period of time.
 
-This approach can help writers overcome writer's block and produce more consistent work. By working on multiple writing projects simultaneously, a writer can take advantage of the spacing effect to improve their learning and memory. For example, if a writer spends a couple of hours working on one project, then switches to another project, then comes back to the first project later, they will be more likely to remember what they wrote and be able to improve on it. This can help them produce better-quality work and avoid getting stuck on just one project.
+This approach can help writers overcome writer's block and produce more consistent work. By working on multiple writing projects simultaneously, a writer can take advantage of the spacing effect to improve their learning and memory. For example, if a writer spends a couple of hours working on one project, then switches to another project, then comes back to the first project later, they will be more likely to have worked through what they wrote subconsciously and be able to improve on it. This can help them produce better-quality work and avoid getting stuck on just one project.
+
+The forgetting effect: ;;TODO try find Wozniak's article about jumping hills
 
 Woz [[http://help.supermemo.org/wiki/Creativity_and_problem_solving_in_SuperMemo#Incremental_writing][writes]]:
 #+begin_quote
@@ -62,11 +64,9 @@ Woz [[http://help.supermemo.org/wiki/Creativity_and_problem_solving_in_SuperMemo
 
 The above relates to the granularity of articles written using IW lending itself to IR as extracts tend to be discrete. In the context of incremental literate programming, I believe the contextualisation provided by prose-around-code, encapsulated in subheadings offer these same advantages while also then allowing us to use the spacing effect over blocks of code. Org-mode's narrowing and widening features further help to constrain or expand context in the flow of IW.
 
-The forgetting effect: ;;TODO try find Wozniak's article about jumping hills
-
 Donald Knuth's "Literate Programming" is a programming methodology that involves combining human-readable text with code in a way that makes the code more understandable and easier to follow. This is accomplished by treating the code as a form of literature, in which the programmer writes prose to explain and document the code, interspersed with the code itself. The resulting "literate programs" are easier to read and understand than traditional programs, which can make them more maintainable and more likely to be used and reused by others. Additionally, the use of literate programming can make the process of writing and maintaining code more enjoyable and rewarding for the programmer, as it allows them to express themselves and their ideas in a more natural and intuitive way. Overall, the benefits of literate programming include improved readability, maintainability, and reusability of code, as well as increased enjoyment and satisfaction for the programmer.
 
-It is possible to combine Piotr Wozniak's "Incremental Writing" and Donald Knuth's "Literate Programming" into a single concept called "Incremental Literate Programming." Incremental Writing is a method of writing that involves starting with a small amount of text and then gradually adding to it over time, rather than trying to write everything at once. Literate Programming is a programming methodology that involves combining human-readable text with code in a way that makes the code more understandable and easier to follow.
+It is possible to combine Piotr Wozniak's "Incremental Writing" and Donald Knuth's "Literate Programming" into a single concept called "Incremental Literate Programming." As seen, Incremental Writing is a method of writing that involves starting with a small amount of text and then gradually adding to it over time, rather than trying to write everything at once. Literate Programming is a programming methodology that involves combining human-readable text with code in a way that makes the code more understandable and easier to follow.
 
 The subheadings can help to structure and organize the code, making it more understandable and easier to follow. Additionally, the use of subheadings can make it easier to use the spacing effect to review and retain blocks of code over time. The narrowing and widening features in org-mode can also be used to constrain or expand the context in the flow of incremental writing, further improving the readability and usability of the code. Overall, the combination of incremental writing and literate programming can provide a powerful and effective way to write and maintain complex programs.
 
@@ -117,30 +117,36 @@ The base value for ~A-factor~ in Supermemo is =2.0=, and so in essence the algo 
 :CREATED:  [2022-08-09 Tue 11:40]
 :ID:       61acbe6b-3cc2-42d2-a4f8-b30777f2ddd8
 :TRIGGER:  chain-find-next(NEXT,from-current,priority-up,effort-down)
+:HEADER-ARGS: :eval no
 :END:
-The review spacings can thus be represented as a simple geometric sequence ($x_n=ar^{(n-1)$) with =2= as the common ratio:
 
-#+begin_src lua :noweb yes :noweb-ref geometric sequence lua :results silent
-local sequence = {}
-function GeoSeq (a, r, n)
+The review spacings can thus be represented as a simple geometric sequence ($x_n=ar^{(n-1)}$) with =2= as the common ratio:
+
+#+name: geometric-sequence-lua
+#+begin_src lua :noweb yes :results silent
+function geo_seq (a, r, n)
+   local sequence = {}
    for i = 1, n do
-   x = a * r^(i-1)
+   local x = a * r^(i-1)
    sequence[#sequence+1] = x
    end
-   return x
+   -- Ensure we are returning the table, not just the last value (x)
+   return sequence
 end
 
 function print_seq (a, r, n)
-  GeoSeq(a, r, n)
-  for index, value in ipairs(sequence) do
+  -- Capture the returned table into a variable called 'seq'
+  local seq = geo_seq(a, r, n)
+  for index, value in ipairs(seq) do
     print(value)
     -- tex.print(math.floor(value))
   end
 end
 #+end_src
 
+We can see here that the function prints up to the 5th position:
 #+begin_src lua :noweb yes :var a_factor=(eval 'a-factor) :results output pp
-«geometric sequence lua»
+«geometric-sequence-lua»
 print_seq(1, a_factor, 5)
 #+end_src
 
@@ -153,43 +159,116 @@ print_seq(1, a_factor, 5)
 
 #+NAME: geo-progression
 #+HEADER: :headers '("\\usepackage{tikz}" "\\usepackage{luacode}")
-#+BEGIN_SRC latex :results graphics file :file img/progression.png :noweb yes
+#+BEGIN_SRC latex :results graphics file :file img/progression.png :noweb yes :export no
 % \pgfsetxvec{\pgfpoint{1.5cm}{0cm}}
 \begin{luacode}
-  «geometric sequence lua»
+  «geometric-sequence-lua»
 
-function print_seq (a, r, n)
+  function print_seq (a, r, n)
   GeoSeq(a, r, n)
   tex.print("")
   for index, value in ipairs(sequence) do
   tex.print(math.floor(value)..[[, ]])
   tex.print("")
   end
-end
+  end
 
 \end{luacode}
 
 \newcommand\printseqq[3]{\directlua{print_seq(#1,#2,#3)}}
 
-% \printseqq{1}{2}{5}
-\begin{tikzpicture}[scale = 0.4]
+\printseqq{1}{2}{5}
+\begin{tikzpicture}[scale = 0.3]
   \node[above] {$\dfrac{x_n=1 x 2^{(n-1)}$};
-  \\
-  \draw[latex-latex] (0,0) -- (21,0);
-  % \foreach \x in \printseq{1}{2}{5}
-  % \draw[->={(\x,0)}, bend left] node [right];
-  \foreach \x in {0,...,21}
-  \draw[shift={(\x,0)},color=black] (0pt,0pt) -- (0pt,-2pt) node[below]
-  {$\x$};
-\end{tikzpicture}
-#+end_src
+    \\
+    \pgfsetxvec{\pgfpoint{1.5cm}{0cm}}
+    \draw[latex-latex] (0,0) -- (20,0);
+    \foreach \i in {0,...,20} {
+      \draw (\i,0) -- (\i,-0.2) node[below] {\i};
+    }
+    % \printseqq{1}{2}{5}
+    % \directlua{print_seq(#1,#2,#3)}
+    % \directlua{tex.sprint(print_seq(#1,#2,#3))}
+    % \foreach \x in \printseq{1}{2}{5} {
+    \foreach \x in {1,2,4,8} {
+     \draw[->, bend left] (\x,0) to (\x*2,0);
+     }
+    % \foreach \x in {\printseq{1}{2}{5}}
+    % \draw[->, bend left] (\x-1,0) to (\x,0);
+  \end{tikzpicture}
+#+END_SRC
 
 #+RESULTS: geo-progression
-[[./img/progression.png]]
+[[file:img/progression.png]]
+
+#+NAME: exponential-timeline
+#+HEADER: :headers '("\\usepackage{tikz}" "\\usepackage{luacode}")
+#+begin_src latex :results file graphics replace :exports results :headers '("\\usepackage{tikz}" "\\usepackage{luacode}") :latex-compiler lualatex :file img/exponential_timeline.pdf
+\begin{tikzpicture}[scale = 0.6]
+    % 1. Draw the underlying number line axis (0 to 18 days)
+    \draw[latex-latex, thick, gray] (-0.5,0) -- (18.5,0);
+    \foreach \i in {0,...,18} {
+      \draw[gray] (\i, 0.1) -- (\i, -0.1) node[below, scale=0.8, black] {\i};
+    }
+    
+    % Label the axis
+    \node[right] at (19, 0) {Days};
+
+    % 2. Dynamic Lua engine generating the exponential TikZ arches
+    \begin{luacode*}
+      -- Pure, encapsulated sequence generator
+      function geo_seq (a, r, n)
+         local sequence = {}
+         for i = 1, n do
+            sequence[#sequence+1] = a * r^(i-1)
+         end
+         return sequence
+      end
+
+      -- Generate our spacing sequence: 1, 2, 4, 8, 16
+      local seq = geo_seq(1, 2, 5)
+
+      -- Loop through the sequence and print out TikZ arc commands
+      for i = 1, #seq - 1 do
+         local current = seq[i]
+         local next_val = seq[i+1]
+         
+         -- We use double backslashes so LaTeX registers the control sequences properly
+         -- tex.print outputs strings straight into the LaTeX stream
+         tex.print(string.format("\\draw[->, line width=1pt, blue!70!black, bend left=45] (%d,0) to (%d,0);", current, next_val))
+      end
+    \end{luacode*}
+
+    % 3. Highlight the sequence milestones with clear markers
+    \foreach \x in {1, 2, 4, 8, 16} {
+       \filldraw[red!80!black] (\x, 0) circle (3pt);
+    }
+    
+    % Title/Legend
+    \node[above, font=\bfseries] at (9, 3.5) {Spaced Repetition: Interval Explosion Visualized};
+    \node[above, scale=0.9, text=gray] at (9, 3.0) {Interval = OldInterval $\times$ A-Factor (2.0)};
+
+\end{tikzpicture}
+#+end_src
 
 These results are then sorted by priority, a user defined variable at the core of both incremental reading and writing.
 
 It should be noted that a key tool in the process is occasionally micromanaging interval lengths, which might grow at an undesirable rate for important articles and thus needs to be manually shortened from time to time.
+
+*** TODO Lua number line
+:PROPERTIES:
+:CREATED:  [2023-04-17 Mon 10:14]
+:ID:       927bafa9-4ea1-4813-b573-bcd1fda16ac7
+:END:
+
+Can you write geometric sequence number line in luatex?
+
+
+This code creates a TikZ picture with an x-axis labeled "n" and a y-axis labeled "a_n". It then plots a geometric sequence with a starting value of 2 and a common ratio of 3, using the specified number of terms. The sequence is plotted on the number line, and tick marks are placed along both the x-axis
+
+Can you create a geometric sequence function in Lua and then recreate the same function in the Fennel language?
+
+This code defines a function geometric_sequence that takes three arguments: the starting value of the sequence (start), the common ratio of the sequence (ratio), and the number of terms in the sequence (numterms). The function generates the sequence by looping through the desired number of terms and calculating each term using the previous term and the common ratio. The generated sequence is then returned as a table.
 
 ** Topic spacing algorithm in Elisp
 :PROPERTIES:
@@ -197,7 +276,7 @@ It should be noted that a key tool in the process is occasionally micromanaging 
 :ID:       5a4ff6c0-c4a6-4d44-8fdc-aeb488fedaff
 :END:
 
-Instead of re-implementing a geometric sequence directly, we'll copy SM's simple function and have our code act off of repetition data written to the ~:PROPERTIES:~ drawer.
+Instead of re-implementing a geometric sequence directly, we'll copy SM's simple function and have our code act off of repetition data written to the ~:PROPERTIES:~ drawer or database depending on which backend the user chooses.
 
 In the functional style the interval determining algorithm:
 - We use =round= here because human work days are measured in real days, which means we have a full circadian cycle between reps.
@@ -257,11 +336,18 @@ agree on the 5th element in the repetition series."
 (ert 'test-org-incremental-spacing-5th-element)
 #+end_src
 
-* Scheduler
+* Scheduler                                                       :incremental:
 :PROPERTIES:
 :CREATED:  [2021-08-31 Tue 18:15]
 :ID:       e02e162b-2845-4dd2-9e09-b40792302541
-The scheduler contains functions for calculating the next interval of a headline and applying that date using org-mode internals.
+:LAST_REVIEWED: 0
+:TOTAL_REPEATS: 0
+:OLD_INTERVAL: 0
+:NEW_INTERVAL: 1
+:A_FACTOR: 2.0
+:END:
+
+The scheduler contains functions for determining the next interval of a headline and applying that date using org-mode internals.
 Where possible, we maintain a core of pure functions and hand off state to boundary helpers.
 
 ** Calculate next state
@@ -423,6 +509,8 @@ Instead of a hard-coded array of strings, use a getter function to eval ~defcust
         org-incremental-last-reviewed-property))
 #+end_src
 
+Customs
+#+begin_src elisp :noweb-ref element-properties :results silent
 (defvar org-incremental-current-element-uuid nil)
 
 (defvar org-incremental-previous-element-uuid nil)
@@ -482,7 +570,7 @@ Test time logic, note that we set a timezone in order to avoid drift:
 (ert 'test-org-incremental-timestamp-formatting)
 #+end_src
 
-** NEXT Next-review date
+** NEXT Hypothetical next-review date
 :PROPERTIES:
 :CREATED:  [2022-12-13 Tue 13:01]
 :ID:       562514ab-6106-43aa-8a45-cca2695e5d12
@@ -579,6 +667,7 @@ Check that ~OLD_INTERVAL~ and ~A_FACTOR~ properties are correctly read from curr
     (message "Projected future intervals (days): %s" 
              (mapconcat #'number-to-string intervals ", "))))
 #+end_src
+
 * Elements
 :PROPERTIES:
 :CREATED:  [2022-03-27 Sun 12:29]
@@ -843,7 +932,7 @@ this should never happen."
 We need to introduce checks for valid A-factor and interval values.
 
 #+begin_src elisp :results silent
-(assert (>= 2 2))
+(cl-assert (>= 2 2))
 #+end_src
 
 ** Delete review data
@@ -995,12 +1084,16 @@ We require the use of ='element-with-markers= to be able to build the =agenda= l
 Here we point the above functions + a simple map to an org file included in the repo to test.
 
 #+begin_src elisp :noweb-ref tests :results silent
+
+#+end_src
+
+#+begin_src elisp :noweb-ref tests :results silent
 (ert-deftest selection-test ()
   "Test whether `org-incremental-query' returns the expected que results."
   (should
-   (let ((inhibit-message t))
-     (setq-local org-incremental-directories "\./demo.org"
-                 org-incremental-todo-keywords "NEXT")
+   (let ((inhibit-message t)
+         (org-incremental-directories "\./demo.org")
+         (org-incremental-todo-keywords "NEXT"))
      (equal
       (org-map-entries
        (lambda ()
@@ -1012,7 +1105,7 @@ Here we point the above functions + a simple map to an org file included in the 
 
 #+end_src
 
-#+begin_src elisp :eval yes :results silent
+#+begin_src elisp :eval no :results silent
 (ert 'selection-test)
 #+end_src
 
@@ -1185,7 +1278,7 @@ Instead of relying only on interactive ~org-ql~ commands, we can provides a list
 
 The ~:buffer:~ and ~:header~ properties should be customizable variables.
 
-#+begin_src elisp :results silent
+#+begin_src elisp :noweb-ref que-options :results silent
 (defcustom org-incremental-buffer "*org-incremental: Outstanding*"
   "Customizable buffer-name for the outstanding que."
   :type 'string
@@ -1199,7 +1292,7 @@ The ~:buffer:~ and ~:header~ properties should be customizable variables.
 
 #+begin_src elisp :noweb-ref queue-views :results silent
 (defun org-incremental-view (results buffer header)
-  "List outstanding elements via `org-ql-view--display'"
+  "Visualize outstanding elements via `org-ql-view--display'."
   (let* ((strings (-map #'org-ql-view--format-element results)))
     (org-ql-view--display
       :buffer buffer
@@ -1210,7 +1303,7 @@ The ~:buffer:~ and ~:header~ properties should be customizable variables.
 
 #+begin_src elisp :noweb-ref queue-views :results silent
 (defun org-incremental-view-outstanding (results buffer header)
-  "List outstanding elements via `org-ql-view--display'"
+  "Visualize outstanding elements via `org-ql-view--display'."
   (interactive)
   (let* ((results (org-incremental-outstanding-que))
          (strings (-map #'org-ql-view--format-element results)))
@@ -1230,14 +1323,19 @@ The ~:buffer:~ and ~:header~ properties should be customizable variables.
 
 Finally, we wrap everything up in the org ~incremental-start-session~ command. This should check for an existing session, and start one if there is not or it is stale.
 
-#+begin_src elisp :results silent
+The =agenda= switching functions should be reliant on a user customizable variable.
+
+#+begin_src elisp :noweb-ref start-session :results silent
 (defun org-incremental-start-session ()
-  "Entry function for starting a incremental writing session"
+  "Entry function for starting a incremental writing session."
   (interactive)
-  (org-incremental-outstanding-que)
-  (org-incremental-view-outstanding)
-  (org-agenda-switch-to)
-  (org-narrow-to-subtree))
+  (org-incremental-view
+   org-incremental-outstanding-que ;; FIXME this should be run as a function
+   org-incremental-buffer org-incremental-header)
+  (when (string= (buffer-name (current-buffer)) org-incremental-buffer)
+    (org-agenda-switch-to)
+    ;; (org-agenda-goto)
+    (org-narrow-to-subtree)))
 
 #+end_src
 
@@ -1294,7 +1392,7 @@ SCHEDULED: <2023-03-08 Wed>
 :END:
 maybe save point to go back
 I could maybe do the storing in the =org-incremental-smart-reschedule= function.
-Should deactivated org-incremental-mode in the previous buffer and activate it in the new buffer.
+Should deactivate org-incremental-mode in the previous buffer and activate it in the new buffer.
 
 This should actually be referencing the first element of the ~org-ql~ list and acting on that so I can goto next from anywhere
 https://github.com/alphapapa/org-ql#listing--acting-on-results
@@ -1872,7 +1970,7 @@ Write a function that /deincrements/ a given headline/element that has a deadlin
 :ID:       859db2df-c980-4543-9898-b149e77f3ab3
 :END:
 
-** TODO [#2] Store element data externally?                      :incremental:
+** TODO [#2] Store element data externally?                       :incremental:
 SCHEDULED: <2022-07-31 Sun>
 :PROPERTIES:
 :CREATED:  [2021-11-30 Tue 18:58]
@@ -1967,12 +2065,12 @@ Other:
 :END:
 
 Use ~org-transclude~ with a temporary buffer to programmatically generate an up-to-date =README.org= from the '[[https://nobiot.github.io/org-transclusion/#Include-the-section-before-the-first-headline-_0028Org-file-only_0029][First section]]' of the current file, as well as the Overview heading:
-#+begin_src elisp
+#+begin_src elisp :eval no :results silent
+(require 'org-transclusion)
 (with-temp-buffer
   (org-mode)
   (insert "
-\n#+transclude: [[file:org-incremental.org]]  :end \"Overview\"
-
+\n#+transclude: [[file:org-incremental.org]] :end \"Overview\"
 \n#+transclude: [[id:a981430d-1319-4d5a-b036-c1478fdf7cd4][overview]]
                 ")
   (org-transclusion-add-all)
@@ -2012,11 +2110,11 @@ Use ~org-transclude~ with a temporary buffer to programmatically generate an up-
 Customizations
 #+begin_src elisp :mkdirp yes :noweb yes :tangle org-incremental.el :results silent
 (defgroup org-incremental nil
-  "Settings for incremental writing in org."
+  "Customization group for org-incremental writing engine."
   :group 'external
   :group 'text)
 
-«a-factor value»
+«a-factor»
 #+end_src
 
 Prompt selections for saving and committing after sessions.
@@ -2081,7 +2179,11 @@ See `org-show-set-visibility' for possible values"
 ;; Queue
 «midnight-shift-funcs»
 
+«que-funcs»
+
 «queue-views»
+
+«start-session»
 
 «queue-goto-functions»
 
@@ -2134,9 +2236,9 @@ See `org-show-set-visibility' for possible values"
 ;;; Code
 (require 'org)
 
-«spacing algo»
+«spacing-algo»
 
-«element rescheduler»
+«element-rescheduler»
 
 ;;; Footer
 
@@ -2177,9 +2279,51 @@ See `org-show-set-visibility' for possible values"
 
 ;;; Code
 (require 'ert)
+(require 'org-incremental)
+(require 'org-incremental-simple)
+(require 'org-incremental-scheduler)
 
 «tests»
 #+end_src
+
+* Run tests
+:PROPERTIES:
+:CREATED:  [2026-06-01 Mon 08:44]
+:ID:       da1c0680-48c2-4deb-baec-ee1a76eaa6c4
+:END:
+
+Run tests for current buffer
+#+begin_src elisp :results silent
+(with-current-buffer
+    (ert t))
+#+end_src
+
+#+begin_src elisp :eval yes :results silent
+(set-popup-rule! "^\\*ert\\*" 
+  :side 'left 
+  :size 0.4 
+  :select t 
+  :quit 'escape)
+#+end_src
+
+Setup manifest file:
+
+#+begin_src scheme :tangle manifest.scm :eval no
+(specifications->manifest
+ '("emacs"
+   "emacs-org-contrib"
+   "emacs-org-ql"
+   "emacs-org-brain"))
+#+end_src
+
+Run tests in clean room:
+#+begin_src tmux :dir (file-name-directory (buffer-file-name)) :session org-incremental
+# ls
+# cd ~/org/projects/org-incremental/
+guix shell -C -m manifest.scm -- emacs -Q --batch -L . -l org-incremental-tests.el -f ert-run-tests-batch-and-exit
+#+end_src
+
+#+RESULTS:
 
 * COMMENT local variables
 :PROPERTIES:

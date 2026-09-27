@@ -1,4 +1,4 @@
-# Created 2023-04-14 Fri 11:44
+# Created 2023-08-15 Tue 13:13
 #+options: tex:t
 #+title: org-incremental
 #+author: Daniel Otto
@@ -30,30 +30,1880 @@ Features:
 - *Incremental writing of email with tools like ~mu4e~!*
 - *Deadline awareness* (modify priority/a-factor/scheduled date based on distance to deadline)
 
-
-
 * Overview
 
-** PROJECT Why incremental writing?
-Incremental writing is a concept co-developed by Piotr Wozniak and [[https://supermemopedia.com/wiki/How_I_use_creative_elaboration_with_the_help_of_incremental_reading][users of Supermemo]] employing the topic spacing feature to break writing projects into sub-chapters, as a form of creative elaboration.
+** NEXT Why incremental writing?
+Incremental writing is a concept co-developed by Piotr Wozniak and [[https://supermemopedia.com/wiki/How_I_use_creative_elaboration_with_the_help_of_incremental_reading][users of Supermemo]], employing its topic spacing feature to break writing projects into sub-chapters, which are then worked on in an 'incremental fashion', allowing the spacing algorithm to feed a writer these subsections with non-zero intervals between writing sessions - taking advantage of the spacing effect as a form of creative elaboration.
+
+The spacing effect is a well-known psychological phenomenon that suggests that learning is more effective when information is presented over time, rather than all at once. This means that it is better to study or practice a subject in multiple sessions over time, rather than trying to learn everything at the same time (session).
+
+Leveraging the spacing effect in the form of incremental writing allows a writer works on multiple writing projects 'simultaneously', rather than focusing on just one project for an extended period of time.
+
+This approach can help writers overcome writer's block and produce more consistent work. By working on multiple writing projects simultaneously, a writer can take advantage of the spacing effect to improve their learning and memory. For example, if a writer spends a couple of hours working on one project, then switches to another project, then comes back to the first project later, they will be more likely to remember what they wrote and be able to improve on it. This can help them produce better-quality work and avoid getting stuck on just one project.
 
 Woz [[http://help.supermemo.org/wiki/Creativity_and_problem_solving_in_SuperMemo#Incremental_writing][writes]]:
 #+begin_quote
 (Texts)... may be bloated and repetitive, however, with incremental reading, they can be prioritized in a rational way. *Incremental writing leaves the texts highly granular and the flow of thought is jagged*, however ... this is an advantage as all individual articles and subarticles *carry sufficient local context to be read independently*.
 #+end_quote
 
-The above relates to the granularity of articles written using IW lending itself to IR as extracts tend to be discrete. In the context of incremental literate programming, I believe the contextualisation provided by prose encapsulated in subheadings offer these same advantages while also then allowing us to use the spacing effect over blocks of code. Org-mode's narrowing and widening features further help to constrain or expand context in the flow of IW.
+The above relates to the granularity of articles written using IW lending itself to IR as extracts tend to be discrete. In the context of incremental literate programming, I believe the contextualisation provided by prose-around-code, encapsulated in subheadings offer these same advantages while also then allowing us to use the spacing effect over blocks of code. Org-mode's narrowing and widening features further help to constrain or expand context in the flow of IW.
 
-*** DONE Read Incremental writing page
-https://www.masterhowtolearn.com/2020-06-09-incremental-writing-no-more-writer-block/
-https://help.supermemo.org/wiki/Incremental_learning#Incremental_writing
-https://www.masterhowtolearn.com/2020-08-09-the-magic-behind-incremental-writing-spacing-and-interleaving/
+The forgetting effect: ;;TODO try find Wozniak's article about jumping hills
 
-** Getting started
+Donald Knuth's "Literate Programming" is a programming methodology that involves combining human-readable text with code in a way that makes the code more understandable and easier to follow. This is accomplished by treating the code as a form of literature, in which the programmer writes prose to explain and document the code, interspersed with the code itself. The resulting "literate programs" are easier to read and understand than traditional programs, which can make them more maintainable and more likely to be used and reused by others. Additionally, the use of literate programming can make the process of writing and maintaining code more enjoyable and rewarding for the programmer, as it allows them to express themselves and their ideas in a more natural and intuitive way. Overall, the benefits of literate programming include improved readability, maintainability, and reusability of code, as well as increased enjoyment and satisfaction for the programmer.
+
+It is possible to combine Piotr Wozniak's "Incremental Writing" and Donald Knuth's "Literate Programming" into a single concept called "Incremental Literate Programming." Incremental Writing is a method of writing that involves starting with a small amount of text and then gradually adding to it over time, rather than trying to write everything at once. Literate Programming is a programming methodology that involves combining human-readable text with code in a way that makes the code more understandable and easier to follow.
+
+The subheadings can help to structure and organize the code, making it more understandable and easier to follow. Additionally, the use of subheadings can make it easier to use the spacing effect to review and retain blocks of code over time. The narrowing and widening features in org-mode can also be used to constrain or expand the context in the flow of incremental writing, further improving the readability and usability of the code. Overall, the combination of incremental writing and literate programming can provide a powerful and effective way to write and maintain complex programs.
+
+The "spacing effect" is a psychological phenomenon that refers to the tendency for information to be more effectively learned and retained when it is presented and reviewed over a series of spaced intervals, rather than being presented and reviewed all at once. In the context of incremental literate programming, the spacing effect can be used to assist with the learning and retention of blocks of code. By breaking the code up into smaller, manageable units and reviewing them over spaced intervals, the programmer can more effectively commit the code to memory and retain their knowledge of it over time. This can make the code easier to understand and work with, as well as making it more likely that the programmer will be able to recall and use the code when needed. Additionally, the use of the spacing effect can help to make the process of learning and working with code more efficient and less overwhelming, as it allows the programmer to focus on smaller amounts of information at a time.
+
+** NEXT Getting started
+Files can be included with a ~#+incremental_writing: t~ header.
+
 Example configuration:
 
 #+begin_src elisp
-(use-package org-incremental
+(use-package! org-incremental
+  :config
+  (setq org-incremental-todo-keywords '("NEXT")))
+#+end_src
+
+* Topic spacing algorithm
+In short, the basic algo for spacing topics is here:
+
+#+begin_example
+(Interval=OldInterval*AFActor)
+#+end_example
+
+- The first metric is self explanatory, but ~A-factor~ [fn:1] (standing for /absolute difficulty factor/) is more complicated in that it is used in older versions (<SM18) of Supermemo to represent element difficulty. It is still used for topics but not items in the current version.
+
+The base value for ~A-factor~ in Supermemo is =2.0=, and so in essence the algo is simply a doubling mechanism:
+
+#+name: a-factor
+#+begin_src elisp
+(defcustom a-factor 2.0
+  "Base a-factor value as per Supermemo defaults."
+  :type 'float
+  :group 'org-incremental)
+#+end_src
+
+[fn:1] :: As it stands the value of the A-factor is not necessarily optimised to make use of the spacing effect. By Woz's own admission the current topic algorithm mostly serves as an obsolescence protocol, to push articles further and further out, and thus relies on user intervention in the form of modifying priorities (this is in-line with the current model) and micromanaging interval rescheduling. The latter is not too painful but we could likely be smarter about this.
+
+** NEXT Write working latex sequence
+The review spacings can thus be represented as a simple geometric sequence ($x_n=ar^{(n-1)$) with =2= as the common ratio:
+
+#+begin_src lua
+local sequence = {}
+function geo_seq (a, r, n)
+   for i = 1, n do
+   x = a * r^(i-1)
+   sequence[#sequence+1] = x
+   end
+   return x
+end
+
+-- function print_seq (a, r, n)
+--   GeoSeq(a, r, n)
+--   for index, value in ipairs(sequence) do
+--     print(value)
+--     -- tex.print(math.floor(value))
+--   end
+-- end
+#+end_src
+
+We can see here that the function prints up to the 5th position as instructed
+#+begin_src lua
+«geometric sequence lua»
+print_seq(1, a_factor, 5)
+#+end_src
+
+#+results: geo-progression
+[[file:img/progression.png]]
+
+These results are then sorted by priority, a user defined variable at the core of both incremental reading and writing.
+
+It should be noted that a key tool in the process is occasionally micromanaging interval lengths, which might grow at an undesirable rate for important articles and thus needs to be manually shortened from time to time.
+
+*** TODO Lua number line
+nanjigen@mailbox.org
+Can you write geometric sequence number line in luatex?
+
+Certainly! Here is an example of how you can create a geometric sequence number line in LuaTeX:
+
+\documentclass{article}
+\usepackage{tikz}
+
+\begin{document}
+
+\begin{tikzpicture}
+  % Set the starting point and common ratio of the geometric sequence
+  \def\start{2}
+  \def\ratio{3}
+
+  % Set the number of terms in the sequence
+  \def\numterms{5}
+
+  % Calculate the maximum value in the sequence
+  \pgfmathsetmacro{\maxval}{\start * \ratio^{\numterms-1}}
+
+  % Set the x-axis limits
+  \pgfmathsetmacro{\xmin}{0}
+  \pgfmathsetmacro{\xmax}{\numterms}
+
+  % Set the y-axis limits
+  \pgfmathsetmacro{\ymin}{0}
+  \pgfmathsetmacro{\ymax}{\maxval}
+
+  % Set the axis labels
+  \def\xlabel{n}
+  \def\ylabel{a_n}
+
+  % Draw the x-axis
+  \draw[->] (\xmin,0) -- (\xmax,0) node[right] {$\xlabel$};
+
+  % Draw the y-axis
+  \draw[->] (0,\ymin) -- (0,\ymax) node[above] {$\ylabel$};
+
+  % Set the tick distance on the x-axis
+  \pgfmathsetmacro{\xtickdistance}{1}
+
+  % Set the tick distance on the y-axis
+  \pgfmathsetmacro{\ytickdistance}{\maxval/4}
+
+  % Draw the ticks on the x-axis
+  \foreach \x in {\xmin,\xtickdistance,...,\xmax}
+    \draw (\x,2pt) -- (\x,-2pt) node[below] {$\x$};
+
+  % Draw the ticks on the y-axis
+  \foreach \y in {\ymin,\ytickdistance,...,\ymax}
+    \draw (2pt,\y) -- (-2pt,\y) node[left] {$\y$};
+
+  % Set the starting point of the geometric sequence
+  \coordinate (A) at (0,\start);
+
+  % Set the common ratio of the geometric sequence
+  \def\cratio{\ratio}
+
+  % Draw the geometric sequence
+  \foreach \n in {1,...,\numterms} {
+    \pgfmathsetmacro{\next}{\cratio * \start}
+    \coordinate (B) at (\n,\next);
+    \draw (A) -- (B);
+    \coordinate (A) at (B);
+    \pgfmathsetmacro{\start}{\next}
+  }
+\end{tikzpicture}
+
+\end{document}
+
+This code creates a TikZ picture with an x-axis labeled "n" and a y-axis labeled "a_n". It then plots a geometric sequence with a starting value of 2 and a common ratio of 3, using the specified number of terms. The sequence is plotted on the number line, and tick marks are placed along both the x-axis
+nanjigen@mailbox.org
+Can you create a geometric sequence function in Lua and then recreate the same function in the Fennel language?
+
+Certainly! Here is an example of how you can create a function that generates a geometric sequence in Lua:
+
+-- Function to generate a geometric sequence
+function geometric_sequence(start, ratio, numterms)
+  -- Initialize the sequence with the starting value
+  local sequence = {start}
+
+-- Loop through the desired number of terms
+for i = 2, numterms do
+  -- Calculate the next term in the sequence
+  local next = ratio * sequence[i-1]
+
+  -- Add the next term to the sequence
+  table.insert(sequence, next)
+end
+
+  -- Return the generated sequence
+  return sequence
+end
+
+-- Test the function by generating a geometric sequence with a starting value of 2,
+-- a common ratio of 3, and 5 terms
+local seq = geometric_sequence(2, 3, 5)
+
+-- Print the generated sequence
+for i, v in ipairs(seq) do
+  print(v)
+end
+
+This code defines a function geometric_sequence that takes three arguments: the starting value of the sequence (start), the common ratio of the sequence (ratio), and the number of terms in the sequence (numterms). The function generates the sequence by looping through the desired number of terms and calculating each term using the previous term and the common ratio. The generated sequence is then returned as a table.
+
+To recreate this function in Fennel, you can use the following code:
+
+-- Function to generate a geometric sequence
+function(start, ratio, numterms)
+  -- Initialize the sequence with the starting value
+  local sequence = {start}
+
+-- Loop through the desired number of terms
+for i = 2, numterms do
+  -- Calculate the next term in the sequence
+  local next = ratio * sequence[i-1]
+
+  -- Add the next term to the sequence
+  table.insert(sequence, next)
+end
+
+  -- Return the generated sequence
+  return sequence
+end
+
+-- Test the function by generating a geometric sequence with a starting value of 2,
+-- a common ratio of 3, and 5 terms
+local seq = geometric_sequence(2, 3, 5)
+
+-- Print the generated sequence
+for i, v in ipairs(seq) do
+  print(v)
+end
+
+This code is nearly identical to the Lua version, with the only difference being the use of Fennel's syntax for defining functions and variables. Both versions of the code will generate a geometric sequence with a starting value of 2, a common ratio of 3, and 5 terms, and print the resulting sequence to the console.
+nanjigen@mailbox.org
+Can we use the fennel function to generate the sequence for our tikz number line graphic?
+
+Yes, you can use the Fennel function to generate the sequence for a TikZ number line graphic. Here is an example of how you might do this:
+
+\documentclass{article}
+\usepackage{tikz}
+\usepackage{fennel-mode}
+
+\begin{document}
+
+\begin{tikzpicture}
+  % Set the starting point and common ratio of the geometric sequence
+  \def\start{2}
+  \def\ratio{3}
+
+  % Set the number of terms in the sequence
+  \def\numterms{5}
+
+  % Generate the geometric sequence using the Fennel function
+  \directlua{
+    -- Function to generate a geometric sequence
+    function geometric_sequence(start, ratio, numterms)
+      -- Initialize the sequence with the starting value
+      local sequence = {start}
+
+      -- Loop through the desired number of terms
+      for i = 2, numterms do
+        -- Calculate the next term in the sequence
+        local next = ratio * sequence[i-1]
+
+        -- Add the next term to the sequence
+        table.insert(sequence, next)
+      end
+
+      -- Return the generated sequence
+      return sequence
+    end
+
+    -- Generate the geometric sequence
+    seq = geometric_sequence(\start, \ratio, \numterms)
+  }
+
+  % Calculate the maximum value in the sequence
+  \pgfmathsetmacro{\maxval}{\start * \ratio^{\numterms-1}}
+
+  % Set the x-axis limits
+  \pgfmathsetmacro{\xmin}{0}
+  \pgfmathsetmacro{\xmax}{\numterms}
+
+  % Set the y-axis limits
+  \pgfmathsetmacro{\ymin}{0}
+  \pgfmathsetmacro{\ymax}{\maxval}
+
+  % Set the axis labels
+  \def\xlabel{n}
+  \def\ylabel{a_n}
+
+  % Draw the x-axis
+  \draw[->] (\xmin,0) -- (\xmax,0) node[right] {$\xlabel$};
+
+  % Draw the y-axis
+  \draw[->] (0,\ymin) -- (0,\ymax) node[above] {$\ylabel$};
+
+  % Set the tick distance on the x-axis
+  \pgfmathsetmacro{\xtickdistance}{1}
+
+  % Set the tick distance on the y-axis
+  \pgfmathsetmacro{\ytickdistance}{\maxval/4}
+
+  % Draw the ticks on the x-axis
+  \foreach \x in {\xmin,\xtickdistance,...,\xmax}
+    \draw (\x,2pt) -- (\x,-2pt) node[below] {$\x$};
+
+  % Draw the ticks on the y-axis
+  \foreach \y in {\ymin,\ytickdistance,...,\ymax}
+    \draw (2pt,\y) -- (-2pt,\y) node[left] {$\y$};
+
+  % Set the starting point of the geometric sequence
+  \coordinate (A) at (0,\start);
+
+  % Set the common ratio of the geometric sequence
+  \def\cratio{\rat
+
+nanjigen@mailbox.org
+Can you collate our conversation thus far into an org-mode document with the code going into src blocks?
+
+Certainly! Here is an example of how you might collate our conversation into an org-mode document with the code going into src blocks:
+
+ * Geometric sequence number line in LuaTeX
+
+To create a geometric sequence number line in LuaTeX, you can use the following code:
+
+#+BEGIN_SRC latex
+\documentclass{article}
+\usepackage{tikz}
+
+\begin{document}
+
+\begin{tikzpicture}
+  % Set the starting point and common ratio of the geometric sequence
+  \def\start{2}
+  \def\ratio{3}
+
+  % Set the number of terms in the sequence
+  \def\numterms{5}
+
+  % Calculate the maximum value in the sequence
+  \pgfmathsetmacro{\maxval}{\start * \ratio^{\numterms-1}}
+
+  % Set the x-axis limits
+  \pgfmathsetmacro{\xmin}{0}
+  \pgfmathsetmacro{\xmax}{\numterms}
+
+  % Set the y-axis limits
+  \pgfmathsetmacro{\ymin}{0}
+  \pgfmathsetmacro{\ymax}{\maxval}
+
+  % Set the axis labels
+  \def\xlabel{n}
+  \def\ylabel{a_n}
+
+  % Draw the x-axis
+  \draw[->] (\xmin,0) -- (\xmax,0) node[right] {$\xlabel$};
+
+  % Draw the y-axis
+  \draw[->] (0,\ymin) -- (0,\ymax) node[above] {$\ylabel$};
+
+  % Set the tick distance on the x-axis
+  \pgfmathsetmacro{\xtickdistance}{1}
+
+  % Set the tick distance on the y-axis
+  \pgfmathsetmacro{\ytickdistance}{\maxval/4}
+
+  % Draw the ticks on the x-axis
+  \foreach \x in {\xmin,\xtickdistance,...,\xmax}
+    \draw (\x,2pt) -- (\x,-2pt) node[below] {$\x$};
+
+  % Draw the ticks on the y-axis
+  \foreach \y in {\ymin,\ytickdistance,...,\ymax}
+    \draw (2pt,\y) -- (-2pt,\y) node[left] {$\y$};
+
+  % Set the starting point of the geometric sequence
+  \coordinate (A) at (0,\start);
+
+  % Set the common ratio of the geometric sequence
+  \def\cratio{\ratio}
+
+  % Draw the geometric sequence
+  \foreach \n in {1,...,\numterms} {
+    \pgfmathsetmacro{\next}{\cratio * \start}
+    \coordinate (B) at (\n,\next);
+    \draw (A) -- (B);
+    \coordinate (A) at (B);
+    \pgfmathsetmacro{\start}{\next}
+  }
+\end{tikzpicture}
+
+\end{document}
+#+END_SRC
+
+- Geometric sequence function in Lua and Fennel
+
+To create a function that generates a
+
+ChatGPT Dec 15 Version. Free Research Preview. Our goal is to make AI systems more natural and safe to interact with. Your feedback will help us im
+
+
+** Topic spacing algorithm in Elisp
+Instead of re-implementing a geometric sequence directly, we'll copy SM's simple function and have our code act off of repetition data written to the ~:PROPERTIES:~ drawer.
+
+In the functional style the interval determining algorithm:
+- We use =round= here because human work days are measured in real days, which means we have a full circadian cycle between reps.
+
+#+begin_src elisp
+(defun org-incremental-determine-next-interval (old-interval a-factor)
+  "Calcuate new interval for current headline.
+Uses: (Interval=OldInterval*AFactor)"
+  (let ((next-interval (* old-interval a-factor)))
+    (round next-interval)))
+#+end_src
+
+This can be compared to a geometric sequencer:
+
+#+begin_src elisp
+(defun org-incremental-geometric (a r n)
+  "Take the first term `A' and multiply by the common ratio `R'
+To produce `N'th value in a sequence"
+  (cl-assert (> r 0) t "r is not greater than 0") ;; TODO test that `r' is not 0
+  (if (> n 0)
+    (* a (expt r (1- n)))))
+#+end_src
+
+Generate a series:
+
+#+begin_src elisp
+(round (org-incremental-geometric 1 a-factor 5))
+#+end_src
+
+#+begin_src elisp
+(org-incremental-determine-next-interval 8 a-factor)
+#+end_src
+
+* Scheduler
+Apply the base algorithm to existing ~:PROPERTIES:~ keys and then write the new interval, moving the previous interval into the "=OLD_INTERVAL=" key.
+The element is rescheduled using ~org~'s internal =org-schedule= function which will be used later for building and sorting a que.
+
+#+begin_src elisp
+(defun org-incremental-smart-reschedule () ;; TODO use arguments
+  "Collect values from headline at point and apply topic algo"
+  (interactive)
+  (if (org-incremental-entry-p) nil
+    (org-incremental--init-element))
+  (let* ((old-interval (org-incremental-element-current-interval))
+         (a-factor (org-incremental-element-a-factor))
+         (prior-reps (org-incremental-element-total-repeats)))
+    (setq new-interval (org-incremental-determine-next-interval old-interval a-factor))
+    (org-entry-put (point) "NEW_INTERVAL" (prin1-to-string new-interval))
+    (org-schedule nil (time-add (current-time)
+                                (days-to-time
+                                 new-interval)))
+    (org-entry-put (point) "OLD_INTERVAL" (number-to-string old-interval))
+    (org-entry-put (point) "TOTAL_REPEATS" (number-to-string (+ 1 prior-reps)))
+    (org-set-property "LAST_REVIEWED"
+                      (org-incremental-time-to-inactive-org-timestamp (current-time)))))
+#+end_src
+
+Let's break down what the scheduler does:
+
+** Scheduling properties
+#+begin_src elisp
+(defvar org-incremental-scheduling-properties
+  '("A-FACTOR" "LAST_INTERVAL" "NEW_INTERVAL" "TOTAL_REPEATS"))
+
+(defvar org-incremental-current-element-uuid nil)
+
+(defvar org-incremental-previous-element-uuid nil)
+
+(defcustom org-incremental-a-factor-property "A_FACTOR"
+  "Property to store the given element's `a-factor'."
+  :type 'string
+  :group 'org-incremental)
+
+(defcustom org-incremental-new-interval-property "NEW_INTERVAL"
+  "Name of property to store the new interval value."
+  :type 'string
+  :group 'org-incremental)
+
+(defcustom org-incremental-old-interval-property "OLD_INTERVAL"
+  "Name of property to store the old interval value."
+  :type 'string
+  :group 'org-incremental)
+
+(defcustom org-incremental-total-repeats-property "TOTAL_REPEATS"
+  "Name of property to store the total number of repeats."
+  :type 'string
+  :group 'org-incremental)
+
+(defcustom org-incremental-created-property "CREATED"
+  "Property displaying the creation time of an entry."
+  :type 'string
+  :group 'org-incremental)
+
+(defcustom org-incremental-last-reviewed-property "LAST_REVIEWED"
+  "Property displaying the creation time of an entry."
+  :type 'string
+  :group 'org-incremental)
+#+end_src
+
+Convert timestamp to org-mode
+#+begin_src elisp
+(defun org-incremental-time-to-inactive-org-timestamp (time)
+  "Convert TIME into org-mode timestamp."
+  (format-time-string
+   (concat "[" (substring (cdr org-time-stamp-formats) 1 -1) "]")
+   time))
+#+end_src
+
+** NEXT Next-review date
+Lifted from ~org-drill~. Let's use this as a base to calculate an estimate of the next review for the current item.
+
+#+begin_src elisp
+(defun org-drill-hypothetical-next-review-date (quality)
+  "Returns an integer representing the number of days into the future
+that the current item would be scheduled, based on a recall quality
+of QUALITY."
+  (let ((weight (org-entry-get (point) "DRILL_CARD_WEIGHT")))
+    (cl-destructuring-bind (last-interval repetitions failures
+                                       total-repeats meanq ease)
+        (org-drill-get-item-data)
+      (if (stringp weight)
+          (setq weight (read weight)))
+      (cl-destructuring-bind (next-interval _repetitions _ease
+                                         _failures _meanq _total-repeats
+                                         &optional _ofmatrix)
+          (cl-case org-drill-spaced-repetition-algorithm
+            (sm5 (org-drill-determine-next-interval-sm5 last-interval repetitions
+                                              ease quality failures
+                                              meanq total-repeats
+                                              org-drill-sm5-optimal-factor-matrix))
+            (sm2 (org-drill-determine-next-interval-sm2 last-interval repetitions
+                                              ease quality failures
+                                              meanq total-repeats))
+            (simple8 (org-drill-determine-next-interval-simple8 last-interval repetitions
+                                                      quality failures meanq
+                                                      total-repeats)))
+        (cond
+         ((not (cl-plusp next-interval))
+          0)
+         ((and (numberp weight) (cl-plusp weight))
+          (+ last-interval
+             (max 1.0 (/ (- next-interval last-interval) weight))))
+         (t
+          next-interval))))))
+
+(defun org-drill-hypothetical-next-review-dates ()
+  "Return hypothetical next review dates."
+  (let ((intervals nil))
+    (dotimes (q 6)
+      (push (max (or (car intervals) 0)
+                 (org-drill-hypothetical-next-review-date q))
+            intervals))
+    (reverse intervals)))
+#+end_src
+
+* Elements
+Much of this is refactored code lifted from [[https://gitlab.com/phillord/org-drill/-/blob/master/org-drill.el][org-drill]] and [[https://www.leonrische.me/pages/org_flashcards.html][org-fc]].
+
+Headlines are considered 'elements' when tagged with the =org-incremental-element-tag=:
+
+#+begin_src elisp
+(defcustom org-incremental-element-tag "incremental"
+  "Tag for marking headlines as incremental writing elements."
+  :type 'string
+  :group 'org-incremental)
+#+end_src
+
+And are drawn from the customizable list of directories:
+#+begin_src elisp
+(defcustom org-incremental-directories (org-agenda-files)
+  "Files to searched for elements"
+  :type 'string
+  :group 'org-incremental)
+#+end_src
+
+If wanted, we can further refine our list of actionable candidates by specifying a TODO keyword(s) list:
+
+#+begin_src elisp
+(defcustom org-incremental-todo-keywords nil
+  "If non-nil, supply list as viable TODO keyword(s)
+to consider as rep-able `org-incremental' entries"
+  :type 'string
+  :group 'org-incremental)
+#+end_src
+
+** Element properties
+** Checking and moving to elements
+Here we perform various checks over the element in question
+#+begin_src elisp
+(defun org-incremental-entry-p ()
+  "Check if the current heading is an incrementalised element."
+  (member org-incremental-element-tag (org-get-tags nil 'local)))
+#+end_src
+
+#+begin_src elisp
+(defun org-incremental-operable-entry-p (marker)
+  "Is MARKER, or the point, in an operable TODO?"
+    (member (org-get-todo-state) org-incremental-todo-keywords))
+#+end_src
+
+#+begin_src elisp
+(defun org-incremental-entry-new-p ()
+  "Return non-nil if the entry at point is new."
+       (let ((element-time (org-get-scheduled-time (point))))
+         (null element-time)))
+#+end_src
+
+Notice the need to test if the retrieved value is already a =0=, otherwise the ~org-time-stamp-now~ function fails.
+
+#+begin_src elisp
+(defun org-incremental-entry-repped-today-p ()
+  "Return non-nil if the entry at point was already repped today
+Otherwise return t if the it was repped today or is a new element."
+  (unless t (org-incremental-entry-new-p)
+    (let ((reviewed-time (org-entry-get (point) org-incremental-last-reviewed-property)))
+      (= 0 (org-time-stamp-to-now reviewed-time)))))
+#+end_src
+
+Shouldn't this be using UUID's? What constitutes =marker=?
+#+begin_src elisp
+(defun org-incremental-goto-entry (marker)
+  "Switch to the buffer and position of MARKER."
+  (switch-to-buffer (marker-buffer marker))
+  (goto-char marker))
+#+end_src
+
+#+begin_src elisp
+;; Defined in ~/.emacs.d/.local/straight/repos/org-drill/org-drill.el
+(defun org-drill-map-entries (func &optional scope drill-match &rest skip)
+  "Like `org-map-entries', but only drill entries are processed."
+  (let ((org-drill-match (or drill-match org-drill-match)))
+    (apply 'org-map-entries func
+           (concat "+" org-incremental-element-tag
+                   (if (and (stringp org-drill-match)
+                            (not (member (elt org-drill-match 0) '(?+ ?- ?|))))
+                       "+" "")
+                   (or org-drill-match ""))
+           (org-drill-current-scope scope)
+           skip)))
+#+end_src
+
+** Element creation
+#+begin_src elisp
+(defun org-incremental--add-tag (tag)
+  "Add TAG to the heading at point."
+  (org-set-tags
+   (cl-remove-duplicates
+    (cons tag (org-get-tags nil 'local))
+    :test #'string=)))
+
+(defun org-incremental--remove-tag (tag)
+  "Add TAG to the heading at point."
+  (org-set-tags
+   (remove tag (org-get-tags nil 'local))))
+#+end_src
+
+The below function is used to create an incrementalized headline. The tagging lets us know that it should be scheduled.
+
+#+begin_src elisp
+(defun org-incremental--init-element ()
+  "Initialize the current headline as a topic."
+  (if (org-incremental-entry-p)
+      (error "Headline is already an incremental element"))
+  (org-back-to-heading)
+  (org-id-get-create)
+  (org-expiry-insert-created)
+  (org-set-property org-incremental-last-reviewed-property "0") ;; TODO can all this be collapsed?
+  (org-set-property org-incremental-total-repeats-property "0")
+  (org-set-property org-incremental-old-interval-property "0")
+  (org-set-property org-incremental-new-interval-property "1") ;; this kicks off the geo seq
+  (org-set-property org-incremental-a-factor-property (number-to-string a-factor))
+  (org-incremental--add-tag org-incremental-element-tag)
+  (if org-incremental-prompt-for-priority-p
+      (let ((org-priority-highest org-incremental-priority-highest)
+            (org-priority-lowest org-incremental-priority-lowest)
+            (org-priority-default org-incremental-default-priority))
+       (org-priority))))
+#+end_src
+
+If we use the =#+org_incremental: t= buffer option perhaps we can steal ~org-auto-tangle~'s functionality and check the buffer on save for actionable TODOs or headers that have not yet been initialized and turn them into elements.
+
+** Retrieve element data
+Bring in some functionality for interacting with data stored the ~:PROPERTIES:~ drawer.
+
+#+begin_src elisp
+(defun org-incremental-element-old-interval (&optional default)
+  "Return previous interval for element at point."
+  (let ((val (org-entry-get (point) "OLD_INTERVAL")))
+    (if val
+        (string-to-number val)
+      (or default 0))))
+
+(defun org-incremental-element-a-factor (&optional default)
+  "Return previous interval for element at point."
+  (let ((val (org-entry-get (point) "A_FACTOR")))
+    (if val
+        (string-to-number val)
+      (or default 0))))
+
+(defun org-incremental-element-current-interval (&optional default)
+  "Return pre-rep interval for element at point."
+  (let ((val (org-entry-get (point) "NEW_INTERVAL")))
+    (if val
+        (string-to-number val)
+      (or default 0))))
+
+(defun org-incremental-element-total-repeats (&optional default)
+  "Return total number of repeats for the element at point."
+  (let ((val (org-entry-get (point) "TOTAL_REPEATS")))
+    (if val
+        (string-to-number val)
+      (or default 0))))
+#+end_src
+
+#+begin_src elisp
+(defun org-incremental-get-element-data ()
+  "Returns a list of 3 elements, containing all the stored recall
+  data for the element at point:
+- LAST-INTERVAL is the interval in days that was used to schedule the element's
+  current review date.
+- REPEATS is the number of times the element has been repeated.
+- A-FACTOR is the number by which to space out a repped element.
+"
+  (let ((learn-str (org-entry-get (point) "LEARN_DATA"))
+        (repeats (org-incremental-entry-total-repeats :missing)))
+    (cond
+     (learn-str
+      (let ((learn-data (and learn-str
+                             (read learn-str))))
+        (list (nth 0 learn-data)        ; last interval
+              (nth 1 learn-data)        ; repetitions
+              (org-incremental-entry-failure-count)
+              (nth 1 learn-data)
+              (org-incremental-entry-last-quality)
+              (nth 2 learn-data)        ; EF
+              )))
+     ((not (eql :missing repeats))
+      (list (org-incremental-entry-last-interval)
+            (org-incremental-entry-repeats-since-fail)
+            (org-incremental-entry-total-repeats)
+            (org-incremental-entry-average-quality)
+            (org-incremental-entry-ease)))
+     (t  ; virgin element
+      (list 0 0 0 0 nil nil)))))
+#+end_src
+
+#+begin_src elisp
+(defun org-incremental-days-since-last-review ()
+  "Nil means a last review date has not yet been stored for
+the element.
+Zero means it was reviewed today.
+A positive number means it was reviewed that many days ago.
+A negative number means the date of last review is in the future --
+this should never happen."
+  (let ((datestr (org-entry-get (point) org-incremental-last-reviewed-property)))
+    (when datestr
+      (- (time-to-days (current-time))
+         (time-to-days (apply 'encode-time
+                              (org-parse-time-string datestr)))))))
+#+end_src
+
+** Store element data
+#+begin_src elisp
+(defun org-incremental-store-element-data (last-interval repeats total-repeats)
+  "Stores the given data in the element at point."
+  (org-entry-delete (point) "LEARN_DATA")
+  (org-set-property "LAST_INTERVAL"
+                    (number-to-string (org-drill-round-float last-interval 4))) ;; TODO refactor
+  (org-set-property "TOTAL_REPEATS" (number-to-string total-repeats)))
+#+end_src
+
+** checks
+We need to introduce checks for valid A-factor and interval values.
+
+#+begin_src elisp
+(assert (>= 2 2))
+#+end_src
+
+** Delete review data
+This is for un-incrementalising an item - in Supermemo parlance this is known as 'forgetting'.
+#+begin_src elisp
+(defun org-incremental-strip-entry-data ()
+  (dolist (prop org-incremental-scheduling-properties)
+    (org-delete-property prop))
+  (org-schedule '(4)))
+#+end_src
+
+#+begin_src elisp
+(defun org-incremental-strip-all-data (&optional scope)
+  "Delete scheduling data from every incremental entry in scope.
+This function may be useful if you want to give your collection of
+entries to someone else.  Scope defaults to the current buffer,
+and is specified by the argument SCOPE, which accepts the same
+values as `org-incremental-scope'."
+  (interactive)
+  (when (yes-or-no-p
+         "Delete scheduling data from ALL items in scope: are you sure?")
+    (cond
+     ((null scope)
+      ;; Scope is the current buffer. This means we can use
+      ;; `org-delete-property-globally', which is faster.
+      (dolist (prop org-incremental-scheduling-properties)
+        (org-delete-property-globally prop))
+      (org-incremental-map-entries (lambda () (org-schedule '(4))) scope))
+     (t
+      (org-incremental-map-entries 'org-incremental-strip-entry-data scope)))
+    (message "Done.")))
+#+end_src
+
+** NEXT Archive headlines
+Functions to more elegantly 'archive' completed headlines.
+
+Currently, when completing a TODO headline, we regenerate it to be placed along the spaced que. However, we need a mechanism to both completed the current item fully so that it is 'DONE', and then be able to archive the element with its repetition data, without actually losing the headline and the literate code contained within.
+
+* Priority system
+We can piggy back off of some more ~org~ functions:
+- =org-default-priority= (30 in this case, with min being 60 and max 1)
+
+Baseline function for setting priority at topic creation.
+Inherit from custom priority.
+
+#+begin_src elisp
+(org-priority org-incremental-priority-default)
+#+end_src
+
+#+begin_src elisp
+(defcustom org-incremental-default-priority 'org-default-priority ;; TODO how to make this use system defaults?
+  "Use a custom set of default priorities, ")
+
+(defcustom org-incremental-priority-highest 'org-priority-highest
+  "Set a custom highest priority for use in `incremental' items
+Use the current org-priority if unset")
+
+(defcustom org-incremental-priority-lowest 'org-priority-lowest
+  "Set a custom lowest priority for use in `incremental' items
+Use the current org-priority if unset")
+#+end_src
+
+Note that sorting numerical priorities does not seem to be working in ~org-ql~. See the relevant [[https://github.com/alphapapa/org-ql/issues/274][issue]].
+
+Use a simple 1-10 range for now:
+#+begin_src elisp
+(setq org-priority-highest 1
+      org-priority-lowest 10
+      org-priority-default 5)
+#+end_src
+
+Experimenting with local
+#+begin_src elisp
+(setq-local org-priority-highest 1
+            org-priority-lowest 10
+            org-priority-default 5)
+#+end_src
+
+This might be useful for setting whether a created subtree implicitly inherits a parent priority (via cookies), inherits it explicitly (the priority is set textually) or via a custom function
+#+begin_src elisp
+(defcustom org-incremental-priority-inheret 'default
+  "Set how priorities are inherited amongst subtrees")
+#+end_src
+
+#+begin_src elisp
+(defcustom org-incremental-prompt-for-priority-p nil
+  "If non-nil, prompt to select headline priority at element creation."
+  :group 'org-incremental
+  :type 'boolean)
+#+end_src
+
+Generic function for visually selecting an elements priority
+See ~org-priority~
+#+begin_src elisp
+(defun org-incremental--select-priority ()
+  "")
+#+end_src
+
+* Queue
+To emulate Supermemo's outstanding que, we need to query due (and overdue) items sourced from the ~org-incremental-directories~ with the ~org-todo-keywords-for-agenda~ list and the =incremental= tag in order to bring up an =agenda=-like view of tasks.
+
+#+begin_src elisp
+(defcustom org-incremental-query
+  '(or (and (tags org-incremental-element-tag)
+            (todo org-incremental-todo-keywords)
+            (scheduled :to today))
+       (and (tags org-incremental-element-tag)
+            (todo org-incremental-todo-keywords)
+            (not (scheduled :from today))))
+  "Query to be run by `org-ql'."
+  :type 'sexp ;; TODO should this be 'symbol?
+  :group 'org-incremental)
+#+end_src
+
+In order to ease testing =org-ql-select= is put into its own function.
+Results are sorted by priority and date:
+
+#+begin_src elisp
+(defun org-incremental-selection (dir query sort)
+  "Run a `org-ql-select' over DIR against the QUERY, SORTing."
+  (org-ql-select dir query
+    :action 'element-with-markers
+    :sort sort))
+#+end_src
+
+We require the use of ='element-with-markers= to be able to build the =agenda= like buffer later on. This calls =org-ql--add-markers= internally, and we use this in our test below.
+
+Here we point the above functions + a simple map to an org file included in the repo to test.
+
+#+begin_src elisp
+
+#+end_src
+
+#+begin_src elisp
+(ert-deftest selection-test ()
+  "Test whether `org-incremental-query' returns the expected que results."
+  (should
+   (let ((inhibit-message t)
+         (org-incremental-directories "\./demo.org")
+         (org-incremental-todo-keywords "NEXT"))
+     (equal
+      (org-map-entries
+       (lambda ()
+         (org-ql--add-markers
+          (org-element-headline-parser)))
+       "incremental"
+       (list (eval org-incremental-directories)))
+      (org-incremental-selection org-incremental-directories org-incremental-query '(date priority))))))
+#+end_src
+
+#+begin_src elisp
+(ert 'selection-test)
+#+end_src
+
+
+** Constructing the que
+First an empty variable to store the que as a list with text properties:
+
+#+begin_src elisp
+(defvar org-incremental-outstanding-que nil)
+#+end_src
+
+*** Midnight shift
+The outstanding que shows scheduled items based on the current day, which we determine via [[https://supermemopedia.com/wiki/Midnight_shift][midnight shift]].
+
+As mentioned in the /Topic spacing algorithm/ section, the spacing effect relies on sleep cycles between days to consolidated memory and for the formalization of new ideas. As such, we need a time against which to 'tick over' into the new day so that we can be sure that the algorithm is making the right calculations, and not using stale data.
+
+We run this test as /midnight+midnight shift = a new learning day/.
+
+At first, simply setting the shift time as midnight seems logical. However, in an increasingly 'on' world, we might find ourselves working past midnight. Thus it is likely best to set this somewhere in the middle of your usual sleep, i.e. while your brain is consolidating.
+
+#+name: midnight
+#+begin_src elisp
+(defvar org-incremental-midnight (make-decoded-time :second 59
+                                                    :minute 59
+                                                    :hour 23)
+  "Canonical midnight")
+#+end_src
+
+We can then calculate the midnight time for any given day using the =decoded=time= suite of functions:
+
+#+begin_src elisp
+(defun org-incremental-midnight ()
+  "Generate midnight time for today."
+  (let* ((current-day (decoded-time-day (decode-time)))
+         (current-month (decoded-time-month (decode-time)))
+         (decoded-day-month (make-decoded-time :second 00
+                                               :minute 00
+                                               :hour 00
+                                               :day current-day
+                                               :month current-month)))
+    (decoded-time-add decoded-day-month
+                      org-incremental-midnight)))
+#+end_src
+
+The Supermemo documentation suggests something like a 2 hour shift past midnight.
+
+#+name: midnight shift
+#+begin_src elisp
+(defcustom org-incremental-midnight-shift "02:00:00"
+  "Time passed when `org-incremental' considers a new day.
+
+    Accepts time in a ISO 8601 time string, or something like
+    the RFC 822 date-time, as per the `parse-time-string' function."
+
+  :type 'string
+  :group 'org-incremental)
+#+end_src
+
+This will be tested against a current session timestamp for the most recent session run.
+#+begin_src elisp
+(defvar org-incremental-current-shift nil
+  "Empty time slot to fill with last run `org-incremental-session'.")
+#+end_src
+
+Set previous shift?
+#+begin_src elisp
+(defun org-incremental-set-current-shift ()
+  "Store the shift of the current session."
+  (setq org-incremental-current-shift (decode-time)))
+#+end_src
+
+#+begin_src elisp
+(time-less-p
+ org-incremental-current-shift
+ (decoded-time-add (org-incremental-midnight)
+                   (parse-time-string org-incremental-midnight-shift)))
+#+end_src
+
+Here we test for midnight drift
+(SEC MIN HOUR DAY MON YEAR DOW DST TZ)
+#+begin_src elisp
+(defun org-incremental-calculate-midnight-drift (current-shift midnight-shift)
+"Calculate whether the currently run session (CURRENT-SHIFT)
+is beyond the MIDNIGHT-SHIFT.
+
+  `(SEC MIN HOUR DAY MON YEAR DOW DST TZ)'"
+
+(let ((midnight-drift (decoded-time-add (org-incremental-midnight)
+                                        (parse-time-string midnight-shift))))
+  (null (time-less-p current-shift midnight-drift))))
+#+end_src
+
+*** Outstanding que
+The =org-ql-select= should be its own function. Maybe run as async in the function or call it async in the below function.
+
+I should write some kind of while loop that messages to the user that the que is being constructed.
+
+This should actually be able to construct a que for any given day?
+
+Where am I running the test for current-shift?
+#+begin_src elisp
+(defun org-incremental-outstanding-que ()
+  "Construct or check today's outstanding que."
+  (if (or (null org-incremental-current-shift)
+          (org-incremental-calculate-midnight-drift
+           org-incremental-current-shift
+           org-incremental-midnight-shift) t)
+      (let* ((dir (directory-files-recursively org-directory "\.org$" t))
+             (query org-incremental-query)
+             (sorting '(date priority))
+             (results (org-incremental-selection dir query sorting)))
+        (setq org-incremental-outstanding-que results)
+        (org-incremental-set-current-shift))
+    (eval 'org-incremental-outstanding-que)))
+#+end_src
+
+** Que Views
+For reasons, variables:
+
+#+begin_src elisp
+(defvar org-incremental-ql-view-buffer-name-prefix "*org-incremental:"
+  "Prefix for names of `org-incremental-ql-view' buffers.")
+#+end_src
+
+The below function performs a search over the files each time it is run, a rather costly function. However, as it uses the ~org-ql-view~ function via ~org-ql-search~, it produces a prettified =agenda=-like buffer that accepts some =org-agenda= commands.
+
+#+begin_src elisp
+(defun org-incremental-search-view-outstanding ()
+  "List outstanding elements via a `org-ql' search"
+  (interactive)
+  (org-ql-search org-incremental-directories
+    '(or (and (tags org-incremental-element-tag)
+              (todo "NEXT")
+              (scheduled :to today))
+         (and (tags org-incremental-element-tag)
+              (todo "NEXT")
+              (not (scheduled :from today))))
+    :sort '(date priority)
+    :title "Incremental Elements"))
+#+end_src
+
+Instead of relying only on interactive ~org-ql~ commands, we can provides a list in a variable via =org-ql-select=, which only needs to be run once for each midnight shift, which can then be acted on to draw agenda views.
+
+The ~:buffer:~ and ~:header~ properties should be customizable variables.
+
+#+begin_src elisp
+(defcustom org-incremental-buffer "*org-incremental: Outstanding*"
+  "Customizable buffer-name for the outstanding que."
+  :type 'string
+  :group 'org-incremental)
+
+(defcustom org-incremental-header "Outstanding Items"
+  "Customizable header for the outstanding ql buffer que."
+  :type 'string
+  :group 'org-incremental)
+#+end_src
+
+#+begin_src elisp
+(defun org-incremental-view (results buffer header)
+  "Visualize outstanding elements via `org-ql-view--display'."
+  (let* ((strings (-map #'org-ql-view--format-element results)))
+    (org-ql-view--display
+      :buffer buffer
+      :header header ;; FIXME Not registered as an *Org QL* buffer
+      :string (s-join "\n" strings))))
+#+end_src
+
+#+begin_src elisp
+(defun org-incremental-view-outstanding (results buffer header)
+  "Visualize outstanding elements via `org-ql-view--display'."
+  (interactive)
+  (let* ((results (org-incremental-outstanding-que))
+         (strings (-map #'org-ql-view--format-element results)))
+    (org-ql-view--display
+      :buffer buffer
+      :header header ;; FIXME Not registered as an *Org QL* buffer
+      :string (s-join "\n" strings))))
+#+end_src
+
+** NEXT Start session function
+Finally, we wrap everything up in the org ~incremental-start-session~ command. This should check for an existing session, and start one if there is not or it is stale.
+
+The =agenda= switching functions should be reliant on a user customizable variable.
+
+#+begin_src elisp
+(defun org-incremental-start-session ()
+  "Entry function for starting a incremental writing session."
+  (interactive)
+  (org-incremental-view
+   org-incremental-outstanding-que ;; FIXME this should be run as a function
+   org-incremental-buffer org-incremental-header)
+  (when (string= (buffer-name (current-buffer)) org-incremental-buffer)
+    (org-agenda-switch-to)
+    ;; (org-agenda-goto)
+    (org-narrow-to-subtree)))
+#+end_src
+
+** NEXT Incremental repped today
+We can =pop= into the list while intersession, otherwise if out of session then perform search. We're searching the ~:LAST_REVIEWED:~ property.
+#+begin_src elisp
+(defun org-incremental-view-completed ()
+  "List elements repped today via a `org-ql' search"
+  (interactive)
+    (org-ql-search org-incremental-directories
+      '(and (tags org-incremental-element-tag)
+            (property >= today))
+      :sort '(date priority)
+      :title "Incremental Elements"))
+#+end_src
+
+Testing blocks
+#+begin_src elisp
+(org-ql-block org-incremental-directories
+  '(and (tags org-incremental-element-tag)
+        (todo "NEXT"))
+  :sort '(date priority)
+  :title "Incremental Elements")
+#+end_src
+
+Some function to introduce noise into the schedule listing
+#+begin_src elisp
+
+#+end_src
+
+** NEXT improve incremental goto function
+maybe save point to go back
+I could maybe do the storing in the =org-incremental-smart-reschedule= function.
+Should deactivate org-incremental-mode in the previous buffer and activate it in the new buffer.
+
+This should actually be referencing the first element of the ~org-ql~ list and acting on that so I can goto next from anywhere
+https://github.com/alphapapa/org-ql#listing--acting-on-results
+=org-ql-view--buffer=
+#+begin_src elisp
+(defun org-incremental-goto-next ()
+  "Rep and go to next outstanding element via a `org-ql' search"
+  (interactive)
+  ;; (if org-incremental-mode ;; TODO make mode global
+      (with-current-buffer (current-buffer) ;; TODO Can I make a better test?
+      (progn
+        (if (org-incremental-entry-repped-today-p) nil
+          (org-incremental-smart-reschedule))
+        (save-buffer)
+        (kill-current-buffer)
+        (org-incremental-view-outstanding))
+        ;; (org-incremental-mode 0)
+        ;; (org-ql-view-refresh)
+        (with-current-buffer "*Org QL View: Incremental Elements*"
+          (org-agenda-switch-to)
+          (org-narrow-to-subtree)
+          ;; (org-incremental-mode 1)
+          ))
+    ;; (error "Not in incremental session"))
+)
+#+end_src
+
+** NEXT goto-previous function
+Go back to recently completed via the =org-incremental-view-recent= function
+#+begin_src elisp
+(defun org-incremental-goto-previous ()
+  "Rep and go to next outstanding element via a `org-ql' search"
+  (interactive)
+  (if org-incremental-mode
+      (progn
+        (org-incremental-view-outstanding)
+        ;; (org-ql-view-refresh)
+        (with-current-buffer "*Org QL View: Incremental Elements*"
+          (org-agenda-switch-to)
+          (org-narrow-to-subtree)))
+    (error "Not in incremental session")))
+#+end_src
+
+Maybe use map-entries?
+Go back to recently completed by accessing ~org-incremental-last-reviewed-property~ and testing for its value being today.
+
+#+begin_src elisp
+(defun org-incremental-view-recent ()
+  "List recently reviewed elements via a `org-ql' search"
+  (interactive)
+  (org-ql-search org-incremental-directories
+    '(or (and (tags org-incremental-element-tag)
+              (todo "NEXT")
+              (property org-incremental-last-reviewed-property val)
+              (scheduled :to today))
+         (and (tags org-incremental-element-tag)
+              (todo "NEXT")
+              (property org-incremental-last-reviewed-property)
+              (not (scheduled :from today))))
+    :sort '(date priority)
+    :title "Incremental Elements"))
+#+end_src
+
+*** NEXT Map org-incremental-goto in org-ql view
+Enter should go to an element
+
+** NEXT Write simple goto function
+#+begin_src elisp
+(defun org-incremental-simple-goto-next ()
+  "Rep and go to next outstanding element via a `org-ql' search."
+  (interactive)
+  (progn
+    (with-current-buffer "*Org QL View: Training*"
+      (org-incremental-simple-reschedule-head)
+      (org-agenda-next-item 1)
+      (org-incremental-org-brain-agenda))
+    (with-current-buffer "*Org QL View: Training*"
+      (org-incremental-simple-reschedule-body)
+      (org-ql-view-refresh))))
+#+end_src
+
+#+begin_src elisp
+(defun org-incremental-org-brain-agenda ()
+  "Pop org-brain visualise from agenda."
+    (let* ((marker (org-get-at-bol 'org-marker))
+           (id-from-marker (org-id-get marker))
+           (entry-from-id (org-brain-entry-from-id id-from-marker)))
+      (org-brain-visualize entry-from-id)))
+#+end_src
+
+** NEXT rep-reschedule
+
+** Check out
+https://github.com/alphapapa/org-ql/issues/88
+memoization
+* Git
+#+begin_src elisp
+(defun switch-to-git-branch ()
+  "Switch to the git branch corresponding to the current top-level org-mode headline."
+  (interactive)
+  (let ((headline (org-get-heading)))
+    (magit-checkout headline)))
+#+end_src
+
+If you are not already checked out to a particular git branch, you can still use org-mode and Elisp to find out which subheadings are under a particular top-level heading. One way to do this would be to use the =org-map-entries= function to iterate over all of the subheadings under the top-level heading, and then use the =org-get-heading= function to retrieve the text of each subheading. Here is an example of how you might do this:
+
+** list subheadings
+(org-find-top-headline)
+#+begin_src elisp
+(defun list-subheadings (top-level-heading)
+  "List all of the subheadings under a given top-level org-mode heading."
+  (let ((subheadings '()))
+    (org-map-entries
+     (lambda ()
+       (push (org-get-heading) subheadings))
+     top-level-heading
+     'tree)
+    subheadings))
+#+end_src
+
+In this example, the list-subheadings function takes a top-level heading as an argument and returns a list of all of the subheadings under that heading. The function uses org-map-entries to iterate over all of the subheadings under the top-level heading, and then uses org-get-heading to retrieve the text of each subheading. The subheadings are added to a list, which is then returned by the function. This allows you to easily and efficiently find out which subheadings are under a particular top-level heading, even if you are not currently checked out to the corresponding git branch.
+
+How would I be able to make `list-subheadings` map through different git branches of a org-mode file?
+
+If you want to use the list-subheadings function to map through different git branches of an org-mode file, you can use the magit-with-refresh macro to temporarily switch to each branch and run the list-subheadings function on it. This can help to ensure that the function is run on the correct version of the org-mode file for each branch, and that the changes made by the function are properly saved and committed to the correct branch. Here is an example of how you might do this:
+
+#+begin_src elisp
+(defun list-subheadings-for-all-branches (org-file)
+  "List all of the subheadings under each top-level heading in an org-mode file, for each git branch containing that file."
+  (magit-with-refresh
+   (magit-branch-loop
+    (list-subheadings (org-get-heading)))))
+#+end_src
+
+In this example, the list-subheadings-for-all-branches function takes an org-mode file as an argument and returns a list of all of the subheadings under each top-level heading in that file, for each git branch containing the file. The function uses magit-with-refresh to ensure that the org-mode file is properly refreshed and updated for each branch, and then uses magit-branch-loop to iterate over each branch and run the list-subheadings function on it. This allows you to easily and efficiently map through the different git branches of an org-mode file and find out which subheadings are under each top-level heading in each branch.
+* Interface
+
+** NEXT Storing views
+A nice ability would be saving and storing a particular project layout at a given element. This would allow us to return to working on that headline much faster as all the resources would be made available when it is traversed to in the queue.
+
+Things we might want to store:
+
+- Buffer position
+- Cursor position
+- Opened buffers
+- Window layout
+- Related resources (links, info nodes etc.)
+
+Let's have this as an optional user-defined setting so as not to interfere with individual workflows:
+
+#+begin_src elisp
+(defcustom org-incremental-store-view-p nil
+  "If non-nil store the current window layout to the current headline"
+  :type 'boolean
+  :group 'org-incremental)
+#+end_src
+
+#+begin_src elisp
+(defcustom org-incremental-store-view-function nil
+  "Function to store a layout."
+  :type 'symbol
+  :group 'org-incremental)
+#+end_src
+
+Burly
+#+begin_src elisp
+(setq burly-bookmark-prefix "")
+#+end_src
+A promising package to enable this functionality is alphapapa's [[https://github.com/alphapapa/burly.el][burly]] in tandem with ~bookmark+~.
+
+*** NEXT Write a function that considers if there is a burly link in the properties drawer
+Using burly for restoring views could be quite nice
+
+
+*** TODO Repair ~bkmp-bookmark-record-from-name-error~
+Currently I am experiencing a bug with ~bookmark+~ where while attempting to restore some part of the ~burly~ bookmark, =nil= is passed and ~eww~ buffers are restored but not placed in the correct window configuration:
+
+=error in process filter: bmkp-bookmark-record-from-name: No such bookmark in bookmark list: ‘’=
+
+#+begin_src elisp
+(bmkp-bookmark-record-from-name)
+#+end_src
+
+** hydra
+
+** transient
+https://www.reddit.com/r/emacs/comments/f3o0v8/anyone_have_good_examples_for_transient/
+https://gist.github.com/abrochard/dd610fc4673593b7cbce7a0176d897de
+https://github.com/emacs-mirror/emacs/blob/master/lisp/international/emoji.el
+https://github.com/magit/transient
+https://github.com/magit/transient/wiki/Developer-Quick-Start-Guide
+
+#+begin_src elisp
+(transient-define-prefix transient-toys-hello ()
+  "Say hello"
+   [("h" "hello" (lambda () (interactive) (message "hello")))])
+#+end_src
+
+*** NEXT Brainstorm org-incremental-transient functions
+** other HUDs
+https://github.com/sp1ff/elfeed-score
+
+** Dashboard
+
+** Modeline
+
+* org-incremental-mode
+#+begin_src emacs-lisp
+ (define-minor-mode org-incremental-mode
+   "Incremental writing for org-mode"
+   :lighter "org-incremental-session"
+   :keymap)
+#+end_src
+
+Check whether buffer is an incrementalised one.
+#+begin_src elisp
+(defun org-incremental-find-value (buffer)
+  "Search the `org-incremental' property in BUFFER and extracts it when found."
+  (with-current-buffer buffer
+    (save-excursion
+      (save-restriction
+        (widen)
+        (goto-char (point-min))
+        (when (re-search-forward (org-make-options-regexp '("org_incremental")) nil :noerror)
+          (match-string 2))))))
+#+end_src
+
+#+begin_src elisp
+(defun org-incremental ()
+  "Start an interactive org-incremental session"
+  (interactive)
+  (if org-incremental-mode
+      (error "Already in an incremental writing session")
+    (org-incremental-mode 1))
+  (org-incremental-view-outstanding)
+  (with-current-buffer "*Org QL View: Incremental Elements*"
+    (org-agenda-switch-to)
+    (org-narrow-to-subtree)))
+#+end_src
+
+* PROJECT Simple que based
+This is an alternative scheduler that makes use of the length of a que and an item's sequential position to determine when to rep it. Items at the head are shuffled to the end of the que when completed. It is especially useful for practicing sets of skills.
+
+#+begin_src elisp
+(defcustom org-incremental-simple-dir nil
+  "List of dirs to be considered for simple schedule."
+  :type 'string ;; FIXME
+  :group 'org-incremental)
+
+(defcustom org-incremental-simple-headline-level "level=1"
+  "Level of headlines to considered for queing."
+  :group 'org-incremental)
+
+(defvar org-incremental-simple-que nil)
+#+end_src
+
+*** NEXT Write this to allow multiple lists
+Increment all the items included in que:
+#+begin_src elisp
+(defun org-incremental-simple-reschedule-head ()
+  "Reschedule que items by incrementing by `1+' ."
+  (let* ((hdmarker (or (org-get-at-bol 'org-hd-marker)
+                       (org-agenda-error)))
+         (buffer (marker-buffer hdmarker))
+         (pos (marker-position hdmarker))
+         (end-pos (org-incremental-number-of-entries))
+         (inhibit-read-only t)
+         ) ;; newhead
+    (org-with-remote-undo buffer
+      (with-current-buffer buffer
+        (widen)
+        (goto-char pos)
+        (org-fold-show-context 'agenda)
+        (let ((current-pos (org-element-property :QUE (org-element-at-point))))
+          (if (string= current-pos "1")
+              (org-set-property "QUE" (number-to-string (+ 1 end-pos)))
+            (error "On %s entry, not 1st" current-pos)))))))
+
+(defun org-incremental-simple-reschedule-body ()
+  "Reschedule body of que"
+  (org-map-entries
+   (lambda ()
+     (org-set-property "QUE" (number-to-string
+                              (1- (string-to-number
+                                   (org-element-property :QUE (org-element-at-point)))))))
+   "+LEVEL>=2+QUE>\"1\"" org-incremental-simple-dir))
+#+end_src
+
+#+begin_src elisp
+(defun org-incremental-simple-sorting (x y)
+  "Comparator function to sort simple que items."
+  (string-version-lessp
+   (org-element-property :QUE x)
+   (org-element-property :QUE y)))
+#+end_src
+
+Collect org headlines into a que:
+#+begin_src elisp
+(defun org-incremental-simple-que ()
+  "Construct or check today's simple outstanding que."
+  (interactive)
+  (let* ((dir (directory-files org-incremental-simple-dir t "\.org$" t))
+         (query '(and (property "QUE")))
+         (sorting (lambda (x y)
+                    (string-version-lessp
+                     (org-element-property :QUE x)
+                     (org-element-property :QUE y))))
+         (results (org-incremental-selection dir query sorting)))
+    (setq org-incremental-simple-que results)))
+#+end_src
+
+View the queued items:
+#+begin_src elisp
+(defcustom org-incremental-simple-buffer "*org-incremental: Que*"
+  "Customizable buffer-name for the simple que."
+  :type 'string
+  :group 'org-incremental)
+
+(defcustom org-incremental-simple-header "Queued Items"
+  "Customizable header for the simple ql buffer que."
+  :type 'string
+  :group 'org-incremental)
+#+end_src
+
+#+begin_src elisp
+(defun org-incremental-view-simple ()
+  "List outstanding elements via a `org-ql' search."
+  (interactive)
+  (org-incremental-view org-incremental-simple-que "Que" "Training")
+  (org-incremental-org-brain-agenda)) ;; TODO generalize
+#+end_src
+
+Example configuration using org-brain.
+#+begin_src elisp
+(map! :after org-brain
+      :map org-brain-visualize-mode-map
+      :desc "n" :n "n" #'org-incremental-simple-goto-next)
+#+end_src
+
+Collect the total number of entries in the target dir:
+#+begin_src elisp
+(defun org-incremental-number-of-entries (&optional level)
+  "Detemine total que size for simple review"
+  (length
+   (org-map-entries t "+LEVEL>=2+QUE>=\"1\"" org-incremental-simple-dir)))
+#+end_src
+
+** Seed dir
+Seed ~QUE~ property to entries with incrementing value at random:
+
+#+begin_src elisp
+  (let* ((files org-incremental-simple-dir)
+         (number-headline (org-incremental-number-of-entries))
+         (que-seq (number-sequence 1 number-headline))
+         (shuffled-seq (elfeed--shuffle que-seq)))
+    (setq reuse-seq shuffled-seq)
+    (org-map-entries
+     (lambda ()
+       (org-set-property "QUE" (number-to-string (car reuse-seq)))
+       (setq reuse-seq (delete (car reuse-seq) reuse-seq)))
+     "level>=2" org-incremental-simple-dir))
+#+end_src
+
+#+begin_src elisp
+(let* ((files (directory-files "~/org/org-brain/kakure-nou" t "\.org$" t))
+       (number-headline (length
+                         (org-map-entries t "level>=2" files)))
+       (que-seq (number-sequence 1 number-headline))
+       (shuffled-seq (elfeed--shuffle que-seq)))
+  (setq reuse-seq shuffled-seq)
+  (org-map-entries
+   (lambda ()
+     (org-set-property "QUE" (number-to-string (car reuse-seq)))
+     (setq reuse-seq (delete (car reuse-seq) reuse-seq)))
+     "level>=2" files))
+#+end_src
+
+List shuffler
+#+begin_src elisp
+(defun elfeed--shuffle (seq)
+  "Destructively shuffle SEQ."
+  (let ((n (length seq)))
+    (prog1 seq                  ; don't use dotimes result (bug#16206)
+      (dotimes (i n)
+        (cl-rotatef (elt seq i) (elt seq (+ i (random (- n i)))))))))
+#+end_src
+
+Tests?
+#+begin_src elisp
+(key-quiz--shuffle-list '("1" "4"))
+#+end_src
+
+#+begin_src elisp
+(elfeed--shuffle '("1" "2" "3"))
+#+end_src
+
+* Ideas
+
+** TODO Could write a hook for git + ~org-incremental~ properties
+Hook git to commit the text created by turning a heading into an element
+
+** TODO Brainstorm: Edna org-ql blocking incremental search function should filter for in buffer elements first
+Not sure what I was thinking here
+
+Am I going to use EDNA as part of org-incremental?
+
+** TODO Include org doc in package
+Write help view function (like doom)
+
+** TODO Deincrementalizer
+Write a function that /deincrements/ a given headline/element that has a deadline at some mid distance along its sequence.
+
+#+begin_src elisp
+(defcustom org-incremental-deincrement-p nil
+  "Boolean to switch on the `deincrementalizer' if non-nil"
+  :type 'boolean
+  :group 'org-incremental)
+#+end_src
+
+#+begin_src elisp
+(defun org-incremental-deincrementalizer ()
+  "Deincrementalize towards a deadline at some optimal distance"
+  (if org-incremental-deincrement-p t))
+#+end_src
+
+** TODO mail integration
+** TODO Mercy/spread functonality
+** TODO Statistical analysis functions
+** TODO git and magit integration
+
+** TODO Store element data externally?
+Maybe use ~org-roam's~ dual model - mirror header information in a db which can be accessed for generating views etc.
+
+* Notes
+
+* Resources
+Justifications for incremental writing:
+- https://www.masterhowtolearn.com/2020-06-09-incremental-writing-no-more-writer-block/
+- https://help.supermemo.org/wiki/Incremental_learning#Incremental_writing
+- https://www.masterhowtolearn.com/2020-08-09-the-magic-behind-incremental-writing-spacing-and-interleaving/
+
+Some documentation for the incremental writing algorithm can be found at:
+- https://help.supermemo.org/wiki/Creativity_and_problem_solving_in_SuperMemo#Incremental_writing_algorithm
+- https://supermemopedia.com/wiki/SM_Algorithm_for_topics_%3F
+- http://supermemopedia.com/wiki/How_was_the_topic_algorithm_created%3F
+- http://supermemopedia.com/wiki/ABC_of_incremental_reading_for_any_user_of_spaced_repetition
+- https://supermemo.guru/wiki/A-Factor
+
+Existing SRS algorithms in Emacs:
+- https://github.com/emacsmirror/org-contrib/blob/master/lisp/org-learn.el
+- https://gitlab.com/phillord/org-drill
+- https://github.com/l3kn/org-fc
+- https://github.com/abo-abo/pamparam
+
+Other implementations:
+- https://github.com/bjsi/incremental-writing/blob/master/src/scheduler.ts
+
+Other:
+- https://github.com/kpence/org-sm/blob/master/org-sm.el
+
+* Files
+
+** License
+#+begin_src elisp
+;;; Header:
+
+;; Author: Daniel Otto
+;; Version: 0.0
+;; Package-requires: ((emacs "26.3") (org "9.4"))
+
+;; URL: https://github.com/nanjigen/org-incremental
+
+;; Copyright (C) 2021-2023 Daniel Otto
+
+;; This program is free software; you can redistribute it and/or modify
+;; it under the terms of the GNU General Public License as published by
+;; the Free Software Foundation, either version 3 of the License, or
+;; (at your option) any later version.
+
+;; This program is distributed in the hope that it will be useful,
+;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;; GNU General Public License for more details.
+
+;; You should have received a copy of the GNU General Public License
+;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+;;; Commentary:
+;;
+;; Incremental writing for org-mode
+;;
+#+end_src
+** README.org
+Use ~org-transclude~ with a temporary buffer to programmatically generate an up-to-date =README.org= from the '[[https://nobiot.github.io/org-transclusion/#Include-the-section-before-the-first-headline-_0028Org-file-only_0029][First section]]' of the current file, as well as the Overview heading:
+#+begin_src elisp
+(require 'org-transclusion)
+(with-temp-buffer
+  (org-mode)
+  (insert "
+\n#+transclude: [[file:org-incremental.org]] :end \"Overview\"
+\n#+transclude: [[id:a981430d-1319-4d5a-b036-c1478fdf7cd4][overview]]
+                ")
+  (org-transclusion-add-all)
+  (org-export-to-file 'org "README.org"))
+#+end_src
+
+** org-incremental/org-incremental.el
+#+begin_src elisp
+;;; org-incremental.el --- Incremental Writing System for org-mode -*- lexical-binding: t; -*-
+#+end_src
+
+#+begin_src elisp
+;;; org-incremental.el --- Incremental Writing System for org-mode -*- lexical-binding: t; -*-
+
+«license»
+;;; Code:
+
+;;;; Requirements
+(require 'cl-lib)
+(require 'org)
+(require 'org-element)
+(require 'org-expiry)
+(require 'org-id)
+(require 'org-ql)
+(require 'org-incremental-scheduler)
+(require 'org-incremental-simple)
+
+;;;; Constants
+#+end_src
+
+Customizations
+#+begin_src elisp
+(defgroup org-incremental nil
+  "Settings for incremental writing in org."
+  :group 'external
+  :group 'text)
+
+«a-factor value»
+#+end_src
+
+Prompt selections for saving and committing after sessions.
+#+begin_src elisp
+(defcustom org-incremental-save-buffers-after-writing-sessions-p nil
+  "If non-nil, prompt to save all modified buffers when a session ends."
+  :group 'org-incremental
+  :type 'boolean)
+#+end_src
+
+#+begin_src elisp
+(defcustom org-incremental-commit-after-writing-sessions-p nil
+  "If non-nil, prompt to save all modified buffers when a session ends."
+  :group 'org-incremental
+  :type 'boolean)
+#+end_src
+
+#+begin_src elisp
+(defcustom org-incremental-narrow-visibility 'minimal
+  "Visibility of the current heading during review.
+See `org-show-set-visibility' for possible values"
+  :type 'symbol
+  :group 'org-incremental
+  :options '(ancestors lineage minimal local tree canonical))
+#+end_src
+
+#+begin_src elisp
+
+«element-properties»
+
+«que-vars»
+
+«midnight-shift-vars»
+
+«element-options»
+
+«midnight-shift-options»
+
+«que-options»
+
+;; Mode
+«minor-mode»
+
+;;; Elements
+«element-properties»
+
+;; Initialize elements
+«element-creation-functions»
+
+;; Check elements
+«element-checks»
+
+;; Element stats
+«element-stats»
+
+;; Remove elements
+«element-deletion-functions»
+
+;; Priority
+«priority-system»
+
+;; Queue
+«midnight-shift-funcs»
+
+«que-funcs»
+
+«queue-views»
+
+«start-session»
+
+«queue-goto-functions»
+
+;;; Footer
+
+(provide 'org-incremental)
+
+;;; org-incremental.el ends here
+#+end_src
+
+** org-incremental-simple.el
+#+begin_src elisp
+;;; org-incremental-simple.el --- Incremental Writing System for org-mode -*- lexical-binding: t; -*-
+
+;;;Commentary
+
+;;; Code:
+(require 'org)
+(require 'org-ql)
+(require 'org-brain)
+
+«simple-configurations»
+
+«view-simple»
+
+«simple-reschedule»
+
+«simple-queue-goto-functions»
+
+(provide 'org-incremental-simple)
+
+;;; org-incremental.el ends here
+#+end_src
+
+** org-incremental/org-incremental-scheduler.el
+#+begin_src elisp
+;;; org-incremental-scheduler.el --- Incremental Writing System for org-mode -*- lexical-binding: t; -*-
+«license»
+
+;;; Code
+(require 'org)
+
+«spacing algo»
+
+«element rescheduler»
+
+;;; Footer
+
+(provide 'org-incremental-scheduler)
+
+;;; org-incremental-scheduler.el ends here
+#+end_src
+
+** org-incremental/org-incremental-hydra.el
+#+begin_src elisp
+;;; org-incremental-hdyra.el --- Incremental Writing System for org-mode -*- lexical-binding: t; -*-
+«license»
+#+end_src
+
+** org-incremental/org-incremental-analysis.el
+#+begin_src elisp
+;;; org-incremental-analysis.el --- Incremental Writing System for org-mode -*- lexical-binding: t; -*-
+«license»
+#+end_src
+
+** org-incremental/tests.el
+#+begin_src elisp
+;;; org-incremental-tests.el --- Incremental Writing System for org-mode -*- lexical-binding: t; -*-
+
+;;; Code
+(require 'ert)
+
+«tests»
+#+end_src
+
+* Overview
+
+** NEXT Why incremental writing?
+Incremental writing is a concept co-developed by Piotr Wozniak and [[https://supermemopedia.com/wiki/How_I_use_creative_elaboration_with_the_help_of_incremental_reading][users of Supermemo]], employing its topic spacing feature to break writing projects into sub-chapters, which are then worked on in an 'incremental fashion', allowing the spacing algorithm to feed a writer these subsections with non-zero intervals between writing sessions - taking advantage of the spacing effect as a form of creative elaboration.
+
+The spacing effect is a well-known psychological phenomenon that suggests that learning is more effective when information is presented over time, rather than all at once. This means that it is better to study or practice a subject in multiple sessions over time, rather than trying to learn everything at the same time (session).
+
+Leveraging the spacing effect in the form of incremental writing allows a writer works on multiple writing projects 'simultaneously', rather than focusing on just one project for an extended period of time.
+
+This approach can help writers overcome writer's block and produce more consistent work. By working on multiple writing projects simultaneously, a writer can take advantage of the spacing effect to improve their learning and memory. For example, if a writer spends a couple of hours working on one project, then switches to another project, then comes back to the first project later, they will be more likely to remember what they wrote and be able to improve on it. This can help them produce better-quality work and avoid getting stuck on just one project.
+
+Woz [[http://help.supermemo.org/wiki/Creativity_and_problem_solving_in_SuperMemo#Incremental_writing][writes]]:
+#+begin_quote
+(Texts)... may be bloated and repetitive, however, with incremental reading, they can be prioritized in a rational way. *Incremental writing leaves the texts highly granular and the flow of thought is jagged*, however ... this is an advantage as all individual articles and subarticles *carry sufficient local context to be read independently*.
+#+end_quote
+
+The above relates to the granularity of articles written using IW lending itself to IR as extracts tend to be discrete. In the context of incremental literate programming, I believe the contextualisation provided by prose-around-code, encapsulated in subheadings offer these same advantages while also then allowing us to use the spacing effect over blocks of code. Org-mode's narrowing and widening features further help to constrain or expand context in the flow of IW.
+
+The forgetting effect: ;;TODO try find Wozniak's article about jumping hills
+
+Donald Knuth's "Literate Programming" is a programming methodology that involves combining human-readable text with code in a way that makes the code more understandable and easier to follow. This is accomplished by treating the code as a form of literature, in which the programmer writes prose to explain and document the code, interspersed with the code itself. The resulting "literate programs" are easier to read and understand than traditional programs, which can make them more maintainable and more likely to be used and reused by others. Additionally, the use of literate programming can make the process of writing and maintaining code more enjoyable and rewarding for the programmer, as it allows them to express themselves and their ideas in a more natural and intuitive way. Overall, the benefits of literate programming include improved readability, maintainability, and reusability of code, as well as increased enjoyment and satisfaction for the programmer.
+
+It is possible to combine Piotr Wozniak's "Incremental Writing" and Donald Knuth's "Literate Programming" into a single concept called "Incremental Literate Programming." Incremental Writing is a method of writing that involves starting with a small amount of text and then gradually adding to it over time, rather than trying to write everything at once. Literate Programming is a programming methodology that involves combining human-readable text with code in a way that makes the code more understandable and easier to follow.
+
+The subheadings can help to structure and organize the code, making it more understandable and easier to follow. Additionally, the use of subheadings can make it easier to use the spacing effect to review and retain blocks of code over time. The narrowing and widening features in org-mode can also be used to constrain or expand the context in the flow of incremental writing, further improving the readability and usability of the code. Overall, the combination of incremental writing and literate programming can provide a powerful and effective way to write and maintain complex programs.
+
+The "spacing effect" is a psychological phenomenon that refers to the tendency for information to be more effectively learned and retained when it is presented and reviewed over a series of spaced intervals, rather than being presented and reviewed all at once. In the context of incremental literate programming, the spacing effect can be used to assist with the learning and retention of blocks of code. By breaking the code up into smaller, manageable units and reviewing them over spaced intervals, the programmer can more effectively commit the code to memory and retain their knowledge of it over time. This can make the code easier to understand and work with, as well as making it more likely that the programmer will be able to recall and use the code when needed. Additionally, the use of the spacing effect can help to make the process of learning and working with code more efficient and less overwhelming, as it allows the programmer to focus on smaller amounts of information at a time.
+
+** NEXT Getting started
+Files can be included with a ~#+incremental_writing: t~ header.
+
+Example configuration:
+
+#+begin_src elisp
+(use-package! org-incremental
   :config
   (setq org-incremental-todo-keywords '("NEXT")))
 #+end_src
