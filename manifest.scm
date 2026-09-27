@@ -1,5 +1,3 @@
-(use-modules (guix profiles))
-
 (specifications->manifest
  '("emacs"
    "emacs-org-contrib"
