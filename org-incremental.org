@@ -2083,7 +2083,7 @@ Other:
 ;;; Header:
 
 ;; Author: Daniel C
-;; Version: 0.0
+;; Version: 0.1.0
 ;; Package-requires: ((emacs "26.3") (org "9.4"))
 
 ;; URL: https://github.com/nanjigen/org-incremental
