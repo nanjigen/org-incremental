@@ -1247,14 +1247,21 @@ no live marker or buffer reference."
          (file (and source-buffer (buffer-file-name source-buffer))))
     (unless (and source-buffer (marker-position marker))
       (error "Selected Org element has no live source marker"))
-    (org-incremental--make-queue-entry
-     :id (org-element-property :ID element)
-     :file (and file (expand-file-name file))
-     :position (marker-position marker)
-     :buffer (unless file source-buffer)
-     :title (org-element-property :raw-value element)
-     :display-string
-     (substring-no-properties (org-ql-view--format-element element)))))
+    (let ((display-string
+           (copy-sequence (org-ql-view--format-element element))))
+      ;; Keep org-ql's faces and display metadata, but discard properties that
+      ;; retain dead scan markers or the parsed element's source buffer.
+      (remove-list-of-text-properties
+       0 (length display-string)
+       '(org-marker org-hd-marker standard-properties)
+       display-string)
+      (org-incremental--make-queue-entry
+       :id (org-element-property :ID element)
+       :file (and file (expand-file-name file))
+       :position (marker-position marker)
+       :buffer (unless file source-buffer)
+       :title (org-element-property :raw-value element)
+       :display-string display-string))))
 
 (defun org-incremental--source-buffers-before-selection (sources)
   "Return live buffers already visiting SOURCES before queue selection."
@@ -1325,8 +1332,16 @@ on repository fixtures or the user's Org configuration.
                                  (equal
                                   (org-incremental-queue-entry-file entry) file)
                                  (null
-                                  (org-incremental-queue-entry-buffer entry))))
+                                 (org-incremental-queue-entry-buffer entry))))
                               results))
+            (let ((formatted
+                   (org-incremental-queue-entry-display-string (car results))))
+              (should (text-property-not-all
+                       0 (length formatted) 'face nil formatted))
+              (should-not (text-property-not-all
+                           0 (length formatted) 'org-marker nil formatted))
+              (should-not (text-property-not-all
+                           0 (length formatted) 'org-hd-marker nil formatted)))
             (should-not (find-buffer-visiting file))))
       (let ((buffer (find-buffer-visiting file)))
         (when buffer (kill-buffer buffer)))
@@ -1803,21 +1818,55 @@ The ~:buffer:~ and ~:header~ properties should be customizable variables.
 #+end_src
 
 #+begin_src elisp :noweb-ref queue-views :results silent
+(defun org-incremental--queue-entry-display-string (entry)
+  "Return a rendered copy for durable queue ENTRY.
+The copy retains org-ql presentation properties and carries ENTRY as durable
+navigation metadata."
+  (let ((string
+         (copy-sequence (org-incremental-queue-entry-display-string entry))))
+    (add-text-properties
+     0 (length string) (list 'org-incremental-entry entry) string)
+    string))
+
+(defun org-incremental-view-visit ()
+  "Visit the durable incremental entry on the current view line."
+  (interactive)
+  (let* ((line-start (line-beginning-position))
+         (entry (or (get-text-property (point) 'org-incremental-entry)
+                    (get-text-property line-start 'org-incremental-entry)
+                    (and (> (point) line-start)
+                         (get-text-property (1- (point))
+                                            'org-incremental-entry)))))
+    (unless (org-incremental-queue-entry-p entry)
+      (user-error "No incremental queue entry on this line"))
+    (org-incremental--visit-element entry)))
+
+(defun org-incremental--install-view-map (buffer)
+  "Install durable queue navigation in org-incremental view BUFFER."
+  (let ((view-buffer (get-buffer buffer)))
+    (when view-buffer
+      (with-current-buffer view-buffer
+        (let ((map (copy-keymap org-ql-view-map)))
+          (define-key map (kbd "RET") #'org-incremental-view-visit)
+          (use-local-map map))))))
+
 (defun org-incremental-render-queue (results &optional buffer header)
   "Render RESULTS without recomputing queue or session state.
 BUFFER and HEADER default to `org-incremental-buffer' and
 `org-incremental-header'."
-  (let ((strings
-         (mapcar
-          (lambda (result)
-            (if (org-incremental-queue-entry-p result)
-                (org-incremental-queue-entry-display-string result)
-              (org-ql-view--format-element result)))
-          results)))
+  (let* ((target-buffer (or buffer org-incremental-buffer))
+         (strings
+          (mapcar
+           (lambda (result)
+             (if (org-incremental-queue-entry-p result)
+                 (org-incremental--queue-entry-display-string result)
+               (org-ql-view--format-element result)))
+           results)))
     (org-ql-view--display
-     :buffer (or buffer org-incremental-buffer)
+     :buffer target-buffer
      :header (or header org-incremental-header)
-     :strings strings)))
+     :strings strings)
+    (org-incremental--install-view-map target-buffer)))
 
 (defun org-incremental-view (results &optional buffer header)
   "Compatibility wrapper for rendering RESULTS."
@@ -1841,10 +1890,14 @@ BUFFER and HEADER default to `org-incremental-buffer' and
                (lambda (&rest arguments)
                  (setq display-arguments arguments))))
       (org-incremental-render-queue entries "*queue-test*" "Queue test")
-      (should (equal display-arguments
-                     '(:buffer "*queue-test*"
-                       :header "Queue test"
-                       :strings ("formatted-one" "formatted-two")))))))
+      (should (equal (plist-get display-arguments :buffer) "*queue-test*"))
+      (should (equal (plist-get display-arguments :header) "Queue test"))
+      (let ((strings (plist-get display-arguments :strings)))
+        (should (equal (mapcar #'substring-no-properties strings)
+                       '("formatted-one" "formatted-two")))
+        (should (eq (get-text-property 0 'org-incremental-entry
+                                       (car strings))
+                    (car entries)))))))
 #+end_src
 
 #+begin_src elisp :noweb-ref queue-views :results silent
@@ -1858,28 +1911,60 @@ This does not replace or otherwise mutate the active session queue."
 
 #+begin_src elisp :noweb-ref tests :results silent
 (ert-deftest test-org-incremental-view-outstanding-selects-and-renders ()
-  "Render fresh outstanding entries when no session queue is active."
+  "Render and visit a durable outstanding entry with agenda presentation."
   (let ((file (make-temp-file
                "org-incremental-view-outstanding-" nil ".org"
                (concat "#+TODO: NEXT | DONE\n"
                        "* NEXT Visible :incremental:\n"
                        "SCHEDULED: <2000-01-01>\n")))
-        display-arguments)
+        (view-buffer "*org-incremental-view-test*"))
     (unwind-protect
         (let ((org-incremental-directories (list file))
               (org-incremental-todo-keywords "NEXT")
+              (org-incremental-buffer view-buffer)
               (org-incremental-current-queue nil))
           (cl-letf (((symbol-function 'org-ql-view--display)
                      (lambda (&rest arguments)
-                       (setq display-arguments arguments))))
+                       (with-current-buffer
+                           (get-buffer-create (plist-get arguments :buffer))
+                         (org-agenda-mode)
+                         (let ((inhibit-read-only t))
+                           (erase-buffer)
+                           (dolist (string (plist-get arguments :strings))
+                             (insert string "\n"))
+                           (insert "\n"))
+                         (org-agenda-finalize)))))
             (org-incremental-view-outstanding)
-            (let ((strings (plist-get display-arguments :strings)))
-              (should (= (length strings) 1))
-              (should (string-match-p "Visible" (car strings))))
             (should-not org-incremental-current-queue)
-            (should-not (find-buffer-visiting file))))
+            (should-not (find-buffer-visiting file))
+            (with-current-buffer view-buffer
+              (goto-char (point-min))
+              (should (string-match-p "Visible"
+                                      (buffer-substring (point-min)
+                                                        (line-end-position))))
+              (should (text-property-not-all
+                       (line-beginning-position) (line-end-position)
+                       'face nil))
+              (should-not (text-property-not-all
+                           (line-beginning-position) (line-end-position)
+                           'org-marker nil))
+              (should-not (text-property-not-all
+                           (line-beginning-position) (line-end-position)
+                           'org-hd-marker nil))
+              (should (org-incremental-queue-entry-p
+                       (get-text-property (point) 'org-incremental-entry)))
+              (should (eq (lookup-key (current-local-map) (kbd "RET"))
+                          #'org-incremental-view-visit))
+              (org-incremental-view-visit))
+            (let ((source-buffer (find-buffer-visiting file)))
+              (should (buffer-live-p source-buffer))
+              (with-current-buffer source-buffer
+                (should (equal (org-get-heading t t t t) "Visible"))
+                (org-incremental-end-session)))))
       (let ((buffer (find-buffer-visiting file)))
         (when buffer (kill-buffer buffer)))
+      (when (get-buffer view-buffer)
+        (kill-buffer view-buffer))
       (delete-file file))))
 #+end_src
 
