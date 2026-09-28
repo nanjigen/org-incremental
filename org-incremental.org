@@ -2794,6 +2794,8 @@ Run tests for current buffer
 Setup manifest file:
 
 #+begin_src scheme :tangle manifest.scm :eval no
+(use-modules (guix profiles))
+
 (specifications->manifest
  '("emacs"
    "emacs-org-contrib"
