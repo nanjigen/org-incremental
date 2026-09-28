@@ -1263,45 +1263,95 @@ no live marker or buffer reference."
        :title (org-element-property :raw-value element)
        :display-string display-string))))
 
-(defun org-incremental--source-buffers-before-selection (sources)
-  "Return live buffers already visiting SOURCES before queue selection."
-  (delq nil
-        (mapcar (lambda (source)
-                  (if (bufferp source)
-                      (and (buffer-live-p source) source)
-                    (find-buffer-visiting source)))
-                sources)))
-
-(defun org-incremental--cleanup-selection-buffers (sources existing-buffers)
-  "Kill unmodified file buffers opened while scanning SOURCES.
-EXISTING-BUFFERS are never killed."
-  (dolist (source sources)
-    (when (stringp source)
-      (let ((buffer (find-buffer-visiting source)))
-        (when (and (buffer-live-p buffer)
-                   (not (memq buffer existing-buffers))
-                   (not (buffer-modified-p buffer)))
+(defun org-incremental--kill-scan-buffers (buffers)
+  "Kill temporary scan BUFFERS without running user cleanup hooks."
+  (dolist (buffer buffers)
+    (when (buffer-live-p buffer)
+      (with-current-buffer buffer
+        (set-buffer-modified-p nil)
+        (let ((kill-buffer-hook nil)
+              (kill-buffer-query-functions nil))
           (kill-buffer buffer))))))
+
+(defun org-incremental--make-scan-buffer (file)
+  "Return a temporary Org buffer containing FILE without visiting it normally.
+Local variables, directory-local variables, local eval forms, and user-facing
+major-mode hooks are suppressed."
+  ;; org-ql deliberately ignores buffers whose names begin with a space.
+  (let ((buffer (generate-new-buffer "*org-incremental-scan*"))
+        success)
+    (unwind-protect
+        (with-current-buffer buffer
+          (setq-local buffer-file-name (expand-file-name file))
+          (setq-local buffer-file-truename (file-truename file))
+          (setq-local default-directory (file-name-directory buffer-file-name))
+          (setq-local buffer-offer-save nil)
+          (setq-local create-lockfiles nil)
+          (setq-local make-backup-files nil)
+          (setq-local auto-save-default nil)
+          (setq-local change-major-mode-hook nil)
+          (buffer-disable-undo)
+          (insert-file-contents buffer-file-name)
+          (let ((enable-local-variables nil)
+                (enable-dir-local-variables nil)
+                (enable-local-eval nil)
+                (text-mode-hook nil)
+                (outline-mode-hook nil)
+                (org-mode-hook nil)
+                (change-major-mode-after-body-hook nil)
+                (after-change-major-mode-hook nil)
+                (before-hack-local-variables-hook nil))
+            (org-mode))
+          (setq buffer-read-only t)
+          (set-buffer-modified-p nil)
+          (setq success t)
+          buffer)
+      (unless success
+        (org-incremental--kill-scan-buffers (list buffer))))))
+
+(defun org-incremental--scan-sources (sources)
+  "Return scan buffers and temporary buffers prepared from SOURCES.
+Already-open file buffers and explicit live buffer sources are reused.  Closed
+files are read into temporary buffers without normal file-visiting behavior."
+  (let (scan-sources temporary-buffers success)
+    (unwind-protect
+        (progn
+          (dolist (source sources)
+            (cond
+             ((bufferp source)
+              (push source scan-sources))
+             ((stringp source)
+              (let ((existing (find-buffer-visiting source)))
+                (if existing
+                    (push existing scan-sources)
+                  (let ((buffer (org-incremental--make-scan-buffer source)))
+                    (push buffer scan-sources)
+                    (push buffer temporary-buffers)))))))
+          (setq success t)
+          (list :sources (nreverse scan-sources)
+                :temporary-buffers (nreverse temporary-buffers)))
+      (unless success
+        (org-incremental--kill-scan-buffers temporary-buffers)))))
 
 (defun org-incremental-selection (sources query sort)
   "Select durable queue entries from normalized SOURCES.
-Temporary unmodified buffers opened by `org-ql-select' are cleaned up after
-the selected elements have been converted, while pre-existing and modified
-buffers are preserved."
-  (let ((existing-buffers
-         (org-incremental--source-buffers-before-selection sources)))
+Closed files are scanned through temporary Org buffers, so `org-ql-select'
+never receives their paths.  Existing user-open buffers are preserved."
+  (let* ((scan (org-incremental--scan-sources sources))
+         (scan-sources (plist-get scan :sources))
+         (temporary-buffers (plist-get scan :temporary-buffers)))
     (unwind-protect
         (mapcar #'org-incremental--element-to-queue-entry
-                (org-ql-select sources query
+                (org-ql-select scan-sources query
                   :action 'element-with-markers
                   :sort sort))
-      (org-incremental--cleanup-selection-buffers sources existing-buffers))))
+      (org-incremental--kill-scan-buffers temporary-buffers))))
 
 #+end_src
 
-We use ='element-with-markers= only during selection.  Each result is converted
-immediately into a durable queue reference, after which buffers opened solely
-for the scan can be closed.
+We use ='element-with-markers= only inside lightweight scan buffers during
+selection.  Each result is converted immediately into a durable queue
+reference, after which temporary scan buffers are destroyed.
 
 Test queue selection against a temporary Org file so the test does not depend
 on repository fixtures or the user's Org configuration.
@@ -1368,6 +1418,51 @@ on repository fixtures or the user's Org configuration.
           (kill-buffer buffer)))
       (delete-file file))))
 
+(defvar org-incremental-test-local-eval-ran nil)
+
+(ert-deftest test-org-incremental-lightweight-file-scan ()
+  "Scan closed files without visiting, local variables, or user mode hooks."
+  (let ((file (make-temp-file
+               "org-incremental-lightweight-scan-" nil ".org"
+               (concat "#+TODO: NEXT | DONE\n"
+                       "* NEXT Lightweight :incremental:\n"
+                       "SCHEDULED: <2000-01-01>\n"
+                       "\n# Local Variables:\n"
+                       "# eval: (setq org-incremental-test-local-eval-ran t)\n"
+                       "# End:\n")))
+        (org-mode-hook-runs 0))
+    (unwind-protect
+        (let ((org-incremental-directories (list file))
+              (org-incremental-todo-keywords "NEXT")
+              (org-incremental-test-local-eval-ran nil)
+              (enable-local-eval t)
+              (org-mode-hook
+               (list (lambda () (setq org-mode-hook-runs
+                                      (1+ org-mode-hook-runs))))))
+          (cl-letf (((symbol-function 'find-file-noselect)
+                     (lambda (&rest _)
+                       (ert-fail "Queue scan called find-file-noselect"))))
+            (let ((results (org-incremental-select-outstanding)))
+              (should (equal
+                       (mapcar #'org-incremental-queue-entry-title results)
+                       '("Lightweight")))
+              (should (equal
+                       (org-incremental-queue-entry-file (car results)) file))
+              (should (integerp
+                       (org-incremental-queue-entry-position (car results))))))
+          (should (= org-mode-hook-runs 0))
+          (should-not org-incremental-test-local-eval-ran)
+          (should-not (find-buffer-visiting file))
+          (should-not
+           (cl-find-if
+            (lambda (buffer)
+              (string-prefix-p "*org-incremental-scan*"
+                               (buffer-name buffer)))
+            (buffer-list))))
+      (let ((buffer (find-buffer-visiting file)))
+        (when buffer (kill-buffer buffer)))
+      (delete-file file))))
+
 (ert-deftest test-org-incremental-selection-preserves-open-buffer ()
   "Do not kill a source buffer that the user had open before selection."
   (let* ((file (make-temp-file "org-incremental-open-test-" nil ".org"
@@ -1385,32 +1480,23 @@ on repository fixtures or the user's Org configuration.
       (delete-file file))))
 
 (ert-deftest test-org-incremental-selection-preserves-modified-buffer ()
-  "Do not kill a newly opened scan buffer if it becomes modified."
-  (let ((file (make-temp-file "org-incremental-modified-test-" nil ".org"
-                              "* NEXT Modified :incremental:\n")))
+  "Do not replace or kill an already-open modified source buffer."
+  (let* ((file (make-temp-file "org-incremental-modified-test-" nil ".org"
+                               "* NEXT Modified :incremental:\n"))
+         (buffer (find-file-noselect file)))
     (unwind-protect
-        (cl-letf (((symbol-function 'org-ql-select)
-                   (lambda (sources _query &rest _arguments)
-                     (let ((buffer (find-file-noselect (car sources))))
-                       (with-current-buffer buffer
-                         (org-mode)
-                         (goto-char (point-min))
-                         (set-buffer-modified-p t)
-                         (let ((element (org-element-at-point)))
-                           (org-element-put-property
-                            element :org-marker (point-marker))
-                           (list element)))))))
+        (progn
+          (with-current-buffer buffer (set-buffer-modified-p t))
           (should (= (length
                       (org-incremental-selection
                        (list file) '(tags "incremental") nil))
                      1))
-          (let ((buffer (find-buffer-visiting file)))
-            (should (buffer-live-p buffer))
-            (should (buffer-modified-p buffer))))
-      (let ((buffer (find-buffer-visiting file)))
-        (when buffer
-          (with-current-buffer buffer (set-buffer-modified-p nil))
-          (kill-buffer buffer)))
+          (should (buffer-live-p buffer))
+          (should (eq (find-buffer-visiting file) buffer))
+          (should (buffer-modified-p buffer)))
+      (when (buffer-live-p buffer)
+        (with-current-buffer buffer (set-buffer-modified-p nil))
+        (kill-buffer buffer))
       (delete-file file))))
 
 (ert-deftest test-org-incremental-source-normalization ()
@@ -2254,21 +2340,29 @@ Go back to recently completed via the =org-incremental-view-recent= function
                (org-incremental-current-queue queue)
                (org-incremental-current-queue-position 0)
                (org-incremental-session-buffer nil)
-               (org-incremental-save-buffers-after-writing-sessions-p nil))
+               (org-incremental-save-buffers-after-writing-sessions-p nil)
+               (normal-find-file-noselect
+                (symbol-function 'find-file-noselect))
+               normal-visit-called)
           (should (equal (mapcar #'org-incremental-queue-entry-title queue)
                          '("First" "Second")))
           (should-not (find-buffer-visiting file))
-          (save-window-excursion
-            (org-incremental--visit-current-element)
-            (should org-incremental-mode)
-            (should (equal (org-get-heading t t t t) "First"))
-            (should (equal (buffer-file-name) file))
-            (org-incremental-goto-next)
-            (should (= org-incremental-current-queue-position 1))
-            (should (equal (org-get-heading t t t t) "Second"))
-            (org-incremental-end-session)
-            (should-not org-incremental-mode)
-            (should-not (buffer-narrowed-p))))
+          (cl-letf (((symbol-function 'find-file-noselect)
+                     (lambda (&rest arguments)
+                       (setq normal-visit-called t)
+                       (apply normal-find-file-noselect arguments))))
+            (save-window-excursion
+              (org-incremental--visit-current-element)
+              (should normal-visit-called)
+              (should org-incremental-mode)
+              (should (equal (org-get-heading t t t t) "First"))
+              (should (equal (buffer-file-name) file))
+              (org-incremental-goto-next)
+              (should (= org-incremental-current-queue-position 1))
+              (should (equal (org-get-heading t t t t) "Second"))
+              (org-incremental-end-session)
+              (should-not org-incremental-mode)
+              (should-not (buffer-narrowed-p)))))
       (let ((buffer (find-buffer-visiting file)))
         (when buffer (kill-buffer buffer)))
       (delete-file file))))
