@@ -1238,33 +1238,98 @@ matching `org-incremental-excluded-path-regexps' are omitted."
             (push source unique))))
       (nreverse unique))))
 
+(defun org-incremental--element-to-queue-entry (element)
+  "Convert an org-ql ELEMENT into a durable queue entry.
+Existing Org IDs are recorded but never created.  File-backed entries retain
+no live marker or buffer reference."
+  (let* ((marker (org-element-property :org-marker element))
+         (source-buffer (and (markerp marker) (marker-buffer marker)))
+         (file (and source-buffer (buffer-file-name source-buffer))))
+    (unless (and source-buffer (marker-position marker))
+      (error "Selected Org element has no live source marker"))
+    (org-incremental--make-queue-entry
+     :id (org-element-property :ID element)
+     :file (and file (expand-file-name file))
+     :position (marker-position marker)
+     :buffer (unless file source-buffer)
+     :title (org-element-property :raw-value element)
+     :display-string
+     (substring-no-properties (org-ql-view--format-element element)))))
+
+(defun org-incremental--source-buffers-before-selection (sources)
+  "Return live buffers already visiting SOURCES before queue selection."
+  (delq nil
+        (mapcar (lambda (source)
+                  (if (bufferp source)
+                      (and (buffer-live-p source) source)
+                    (find-buffer-visiting source)))
+                sources)))
+
+(defun org-incremental--cleanup-selection-buffers (sources existing-buffers)
+  "Kill unmodified file buffers opened while scanning SOURCES.
+EXISTING-BUFFERS are never killed."
+  (dolist (source sources)
+    (when (stringp source)
+      (let ((buffer (find-buffer-visiting source)))
+        (when (and (buffer-live-p buffer)
+                   (not (memq buffer existing-buffers))
+                   (not (buffer-modified-p buffer)))
+          (kill-buffer buffer))))))
+
 (defun org-incremental-selection (sources query sort)
-  "Run `org-ql-select' over normalized SOURCES against QUERY, using SORT."
-  (org-ql-select sources query
-    :action 'element-with-markers
-    :sort sort))
+  "Select durable queue entries from normalized SOURCES.
+Temporary unmodified buffers opened by `org-ql-select' are cleaned up after
+the selected elements have been converted, while pre-existing and modified
+buffers are preserved."
+  (let ((existing-buffers
+         (org-incremental--source-buffers-before-selection sources)))
+    (unwind-protect
+        (mapcar #'org-incremental--element-to-queue-entry
+                (org-ql-select sources query
+                  :action 'element-with-markers
+                  :sort sort))
+      (org-incremental--cleanup-selection-buffers sources existing-buffers))))
 
 #+end_src
 
-We require the use of ='element-with-markers= to be able to build the =agenda= like buffer later on. This calls =org-ql--add-markers= internally, and we use this in our test below.
+We use ='element-with-markers= only during selection.  Each result is converted
+immediately into a durable queue reference, after which buffers opened solely
+for the scan can be closed.
 
 Test queue selection against a temporary Org file so the test does not depend
 on repository fixtures or the user's Org configuration.
 
 #+begin_src elisp :noweb-ref tests :results silent
 (ert-deftest test-org-incremental-selection ()
-  "Select only matching incremental TODO entries from an isolated file."
+  "Select durable entries and clean buffers opened only for scanning."
   (let ((file (make-temp-file "org-incremental-test-" nil ".org"
-                              "* NEXT Due :incremental:\n* TODO Other\n")))
+                              (concat "* NEXT First :incremental:\n"
+                                      ":PROPERTIES:\n:ID: existing-id\n:END:\n"
+                                      "* NEXT Second :incremental:\n"
+                                      "* TODO Other\n"))))
     (unwind-protect
-        (let* ((org-agenda-files nil)
-               (org-todo-keywords '((sequence "NEXT" "TODO" "|" "DONE")))
-               (results (org-incremental-selection
-                         (list file)
-                         '(and (tags "incremental") (todo "NEXT"))
-                         nil)))
-          (should (= (length results) 1))
-          (should (equal (org-element-property :raw-value (car results)) "Due")))
+        (let ((org-agenda-files nil)
+              (org-todo-keywords '((sequence "NEXT" "TODO" "|" "DONE"))))
+          (should-not (find-buffer-visiting file))
+          (let ((results (org-incremental-selection
+                          (list file)
+                          '(and (tags "incremental") (todo "NEXT"))
+                          nil)))
+            (should (equal (mapcar #'org-incremental-queue-entry-title results)
+                           '("First" "Second")))
+            (should (equal (org-incremental-queue-entry-id (car results))
+                           "existing-id"))
+            (should (cl-every #'org-incremental-queue-entry-p results))
+            (should (cl-every (lambda (entry)
+                                (and
+                                 (equal
+                                  (org-incremental-queue-entry-file entry) file)
+                                 (null
+                                  (org-incremental-queue-entry-buffer entry))))
+                              results))
+            (should-not (find-buffer-visiting file))))
+      (let ((buffer (find-buffer-visiting file)))
+        (when buffer (kill-buffer buffer)))
       (delete-file file))))
 
 (ert-deftest test-org-incremental-select-outstanding-due-items ()
@@ -1281,10 +1346,55 @@ on repository fixtures or the user's Org configuration.
               (org-incremental-todo-keywords '("NEXT")))
           (let ((results (org-incremental-select-outstanding)))
             (should (= (length results) 1))
-            (should (equal (org-element-property :raw-value (car results))
+            (should (equal (org-incremental-queue-entry-title (car results))
                            "Due"))))
       (let ((buffer (find-buffer-visiting file)))
         (when buffer
+          (kill-buffer buffer)))
+      (delete-file file))))
+
+(ert-deftest test-org-incremental-selection-preserves-open-buffer ()
+  "Do not kill a source buffer that the user had open before selection."
+  (let* ((file (make-temp-file "org-incremental-open-test-" nil ".org"
+                               "* NEXT Open :incremental:\n"))
+         (buffer (find-file-noselect file)))
+    (unwind-protect
+        (progn
+          (should (= (length
+                      (org-incremental-selection
+                       (list file) '(tags "incremental") nil))
+                     1))
+          (should (buffer-live-p buffer))
+          (should (eq (find-buffer-visiting file) buffer)))
+      (when (buffer-live-p buffer) (kill-buffer buffer))
+      (delete-file file))))
+
+(ert-deftest test-org-incremental-selection-preserves-modified-buffer ()
+  "Do not kill a newly opened scan buffer if it becomes modified."
+  (let ((file (make-temp-file "org-incremental-modified-test-" nil ".org"
+                              "* NEXT Modified :incremental:\n")))
+    (unwind-protect
+        (cl-letf (((symbol-function 'org-ql-select)
+                   (lambda (sources _query &rest _arguments)
+                     (let ((buffer (find-file-noselect (car sources))))
+                       (with-current-buffer buffer
+                         (org-mode)
+                         (goto-char (point-min))
+                         (set-buffer-modified-p t)
+                         (let ((element (org-element-at-point)))
+                           (org-element-put-property
+                            element :org-marker (point-marker))
+                           (list element)))))))
+          (should (= (length
+                      (org-incremental-selection
+                       (list file) '(tags "incremental") nil))
+                     1))
+          (let ((buffer (find-buffer-visiting file)))
+            (should (buffer-live-p buffer))
+            (should (buffer-modified-p buffer))))
+      (let ((buffer (find-buffer-visiting file)))
+        (when buffer
+          (with-current-buffer buffer (set-buffer-modified-p nil))
           (kill-buffer buffer)))
       (delete-file file))))
 
@@ -1413,9 +1523,7 @@ on repository fixtures or the user's Org configuration.
                 (org-incremental-save-buffers-after-writing-sessions-p nil))
             (let ((results (org-incremental-select-outstanding)))
               (should (equal
-                       (sort (mapcar (lambda (element)
-                                       (org-element-property :raw-value element))
-                                     results)
+                       (sort (mapcar #'org-incremental-queue-entry-title results)
                              #'string-lessp)
                        '("Due" "Nested"))))
             (with-temp-buffer
@@ -1452,8 +1560,18 @@ Session queue data is stored separately from the function that selects it.
 The position is a zero-based index into the current queue.
 
 #+begin_src elisp :noweb-ref que-vars :results silent
+(cl-defstruct (org-incremental-queue-entry
+               (:constructor org-incremental--make-queue-entry))
+  "Durable reference to an Org heading selected for a session queue."
+  id
+  file
+  position
+  buffer
+  title
+  display-string)
+
 (defvar org-incremental-current-queue nil
-  "Elements in the active incremental session.")
+  "Durable queue entries in the active incremental session.")
 
 (defvar org-incremental-current-queue-position 0
   "Zero-based position in `org-incremental-current-queue'.")
@@ -1581,7 +1699,7 @@ Where am I running the test for current-shift?
                              '((not (scheduled :from today))))))))
 
 (defun org-incremental-select-outstanding (&optional sources query sort)
-  "Return outstanding elements selected from SOURCES.
+  "Return durable outstanding queue entries selected from SOURCES.
 SOURCES defaults to `org-incremental-directories', QUERY defaults to
 `org-incremental-query', and SORT defaults to date then priority order.
 This function computes queue data without changing session state or UI."
@@ -1689,7 +1807,13 @@ The ~:buffer:~ and ~:header~ properties should be customizable variables.
   "Render RESULTS without recomputing queue or session state.
 BUFFER and HEADER default to `org-incremental-buffer' and
 `org-incremental-header'."
-  (let ((strings (mapcar #'org-ql-view--format-element results)))
+  (let ((strings
+         (mapcar
+          (lambda (result)
+            (if (org-incremental-queue-entry-p result)
+                (org-incremental-queue-entry-display-string result)
+              (org-ql-view--format-element result)))
+          results)))
     (org-ql-view--display
      :buffer (or buffer org-incremental-buffer)
      :header (or header org-incremental-header)
@@ -1703,14 +1827,20 @@ BUFFER and HEADER default to `org-incremental-buffer' and
 
 #+begin_src elisp :noweb-ref tests :results silent
 (ert-deftest test-org-incremental-render-queue-display-arguments ()
-  "Pass formatted queue entries through the current `org-ql' view API."
-  (let (display-arguments)
+  "Render durable queue snapshots through the current `org-ql' view API."
+  (let ((entries
+         (list (org-incremental--make-queue-entry
+                :title "One" :display-string "formatted-one")
+               (org-incremental--make-queue-entry
+                :title "Two" :display-string "formatted-two")))
+        display-arguments)
     (cl-letf (((symbol-function 'org-ql-view--format-element)
-               (lambda (element) (format "formatted-%s" element)))
+               (lambda (_element)
+                 (ert-fail "Durable queue rendering reparsed an element")))
               ((symbol-function 'org-ql-view--display)
                (lambda (&rest arguments)
                  (setq display-arguments arguments))))
-      (org-incremental-render-queue '(one two) "*queue-test*" "Queue test")
+      (org-incremental-render-queue entries "*queue-test*" "Queue test")
       (should (equal display-arguments
                      '(:buffer "*queue-test*"
                        :header "Queue test"
@@ -1737,14 +1867,43 @@ selection, rendering, and element visiting remain separate operations.
 
 #+begin_src elisp :noweb-ref start-session :results silent
 (defun org-incremental-current-element ()
-  "Return the element at the active queue position, or nil."
+  "Return the durable entry at the active queue position, or nil."
   (nth org-incremental-current-queue-position org-incremental-current-queue))
 
+(defun org-incremental--queue-entry-marker (entry)
+  "Resolve durable queue ENTRY to a live marker.
+Prefer an existing Org ID within the recorded file, then use its fallback
+position.  A non-file buffer source must still be live."
+  (unless (org-incremental-queue-entry-p entry)
+    (error "Invalid org-incremental queue entry: %S" entry))
+  (let* ((file (org-incremental-queue-entry-file entry))
+         (id (org-incremental-queue-entry-id entry))
+         (source-buffer (org-incremental-queue-entry-buffer entry))
+         (id-marker (and id file (org-id-find-id-in-file id file t))))
+    (or id-marker
+        (let ((buffer
+               (cond
+                (file
+                 (unless (file-readable-p file)
+                   (user-error "Org incremental source is not readable: %s" file))
+                 (find-file-noselect file))
+                ((buffer-live-p source-buffer) source-buffer)
+                (t (user-error "Org incremental queue source is unavailable")))))
+          (with-current-buffer buffer
+            (save-restriction
+              (widen)
+              (goto-char
+               (min (max (point-min)
+                         (or (org-incremental-queue-entry-position entry)
+                             (point-min)))
+                    (point-max)))
+              (unless (org-at-heading-p)
+                (org-back-to-heading t))
+              (point-marker)))))))
+
 (defun org-incremental--visit-element (element)
-  "Visit ELEMENT and mark its buffer as the active session buffer."
-  (let ((marker (org-element-property :org-marker element)))
-    (unless (and (markerp marker) (marker-buffer marker))
-      (error "Queue element has no live Org marker"))
+  "Visit durable queue ELEMENT and mark its buffer as the session buffer."
+  (let ((marker (org-incremental--queue-entry-marker element)))
     (when (buffer-live-p org-incremental-session-buffer)
       (with-current-buffer org-incremental-session-buffer
         (when org-incremental-mode
@@ -1968,35 +2127,38 @@ Go back to recently completed via the =org-incremental-view-recent= function
         (should-not org-incremental-current-queue)
         (should (= org-incremental-current-queue-position 0))))))
 
-(ert-deftest test-org-incremental-navigation-visits-queue-markers ()
-  "Navigation visits stored Org markers without relying on a view buffer."
-  (let ((buffer (generate-new-buffer " *org-incremental-navigation*")))
+(ert-deftest test-org-incremental-navigation-reopens-durable-entries ()
+  "Navigation reopens only the selected durable entry after scan cleanup."
+  (let ((file (make-temp-file
+               "org-incremental-navigation-" nil ".org"
+               (concat "#+TODO: NEXT | DONE\n"
+                       "* NEXT First :incremental:\n"
+                       ":PROPERTIES:\n:ID: durable-first\n:END:\nBody\n"
+                       "* NEXT Second :incremental:\nBody\n"))))
     (unwind-protect
-        (with-current-buffer buffer
-          (org-mode)
-          (insert "* First\nBody\n* Second\nBody\n")
-          (goto-char (point-min))
-          (let ((first (org-element-at-point)))
-            (org-element-put-property first :org-marker (point-marker))
-            (re-search-forward "^\\* Second")
-            (beginning-of-line)
-            (let ((second (org-element-at-point))
-                  (org-incremental-current-queue-position 0)
-                  (org-incremental-session-buffer nil)
-                  (org-incremental-save-buffers-after-writing-sessions-p nil))
-              (org-element-put-property second :org-marker (point-marker))
-              (let ((org-incremental-current-queue (list first second)))
-                (org-incremental--visit-current-element)
-                (should org-incremental-mode)
-                (should (equal (org-get-heading t t t t) "First"))
-                (org-incremental-goto-next)
-                (should (= org-incremental-current-queue-position 1))
-                (should (equal (org-get-heading t t t t) "Second"))
-                (org-incremental-end-session)
-                (should-not org-incremental-mode)
-                (should-not (buffer-narrowed-p))))))
-      (when (buffer-live-p buffer)
-        (kill-buffer buffer)))))
+        (let* ((queue (org-incremental-selection
+                       (list file) '(tags "incremental") nil))
+               (org-incremental-current-queue queue)
+               (org-incremental-current-queue-position 0)
+               (org-incremental-session-buffer nil)
+               (org-incremental-save-buffers-after-writing-sessions-p nil))
+          (should (equal (mapcar #'org-incremental-queue-entry-title queue)
+                         '("First" "Second")))
+          (should-not (find-buffer-visiting file))
+          (save-window-excursion
+            (org-incremental--visit-current-element)
+            (should org-incremental-mode)
+            (should (equal (org-get-heading t t t t) "First"))
+            (should (equal (buffer-file-name) file))
+            (org-incremental-goto-next)
+            (should (= org-incremental-current-queue-position 1))
+            (should (equal (org-get-heading t t t t) "Second"))
+            (org-incremental-end-session)
+            (should-not org-incremental-mode)
+            (should-not (buffer-narrowed-p))))
+      (let ((buffer (find-buffer-visiting file)))
+        (when buffer (kill-buffer buffer)))
+      (delete-file file))))
 #+end_src
 
 Maybe use map-entries?
