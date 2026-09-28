@@ -705,6 +705,15 @@ A scalar directory string is also accepted for compatibility.  Selection
 normalizes these roots to readable Org files before calling `org-ql'."
   :type '(repeat directory)
   :group 'org-incremental)
+
+(defcustom org-incremental-excluded-path-regexps nil
+  "Regexps matching expanded paths excluded from queue source discovery.
+Matching directories are not traversed, and matching files are omitted.
+Explicit Org file sources and file-visiting Org buffers also respect these
+rules.  Empty regexps are ignored so an empty Customize entry cannot exclude
+every source accidentally."
+  :type '(repeat regexp)
+  :group 'org-incremental)
 #+end_src
 
 If wanted, we can further refine our list of actionable candidates by specifying a TODO keyword(s) list:
@@ -1144,11 +1153,34 @@ In order to ease testing =org-ql-select= is put into its own function.
 Results are sorted by priority and date:
 
 #+begin_src elisp :noweb-ref que-funcs :results silent
+(defun org-incremental--excluded-path-p (path)
+  "Return non-nil when expanded PATH matches an exclusion regexp.
+Empty regexps in `org-incremental-excluded-path-regexps' are ignored."
+  (unless (listp org-incremental-excluded-path-regexps)
+    (user-error "org-incremental excluded path regexps must be a list"))
+  (let ((expanded (expand-file-name path)))
+    (cl-some
+     (lambda (regexp)
+       (unless (stringp regexp)
+         (user-error "org-incremental exclusion regexp must be a string: %S"
+                     regexp))
+       (and (not (string= regexp ""))
+            (condition-case error-data
+                (or (string-match-p regexp expanded)
+                    (and (file-directory-p expanded)
+                         (string-match-p regexp
+                                         (file-name-as-directory expanded))))
+              (invalid-regexp
+               (user-error "Invalid org-incremental exclusion regexp %S: %s"
+                           regexp (error-message-string error-data))))))
+     org-incremental-excluded-path-regexps)))
+
 (defun org-incremental--normalize-sources (&optional sources)
   "Expand configured SOURCES into unique readable Org files or buffers.
 Directory roots are searched recursively.  A scalar path, a list of paths,
 explicit Org files, and live Org buffers are accepted.  Invalid values signal
-a package-level `user-error' before `org-ql-select' is called."
+a package-level `user-error' before `org-ql-select' is called.  Expanded paths
+matching `org-incremental-excluded-path-regexps' are omitted."
   (let* ((configured (if (null sources) org-incremental-directories sources))
          (items (cond ((null configured) nil)
                       ((or (stringp configured) (bufferp configured))
@@ -1166,20 +1198,30 @@ a package-level `user-error' before `org-ql-select' is called."
           (unless (derived-mode-p 'org-mode)
             (user-error "org-incremental source is not an Org buffer: %s"
                         (buffer-name item))))
-        (push item files-or-buffers))
+        (unless (and (buffer-file-name item)
+                     (org-incremental--excluded-path-p
+                      (buffer-file-name item)))
+          (push item files-or-buffers)))
        ((stringp item)
         (let ((path (expand-file-name item)))
           (cond
            ((file-directory-p path)
             (unless (file-readable-p path)
               (user-error "org-incremental directory is not readable: %s" path))
-            (dolist (file (directory-files-recursively path "\\.org\\'"))
-              (when (file-readable-p file)
-                (push file files-or-buffers))))
+            (unless (org-incremental--excluded-path-p path)
+              (dolist (file
+                       (directory-files-recursively
+                        path "\\.org\\'" nil
+                        (lambda (directory)
+                          (not (org-incremental--excluded-path-p directory)))))
+                (when (and (file-readable-p file)
+                           (not (org-incremental--excluded-path-p file)))
+                  (push file files-or-buffers)))))
            ((and (file-regular-p path)
                  (file-readable-p path)
                  (string-match-p "\\.org\\'" path))
-            (push path files-or-buffers))
+            (unless (org-incremental--excluded-path-p path)
+              (push path files-or-buffers)))
            ((file-exists-p path)
             (user-error "org-incremental source is not a readable Org file: %s"
                         path))
@@ -1270,6 +1312,54 @@ on repository fixtures or the user's Org configuration.
                          (sort (list first second) #'string-lessp))))
       (delete-directory root t))))
 
+(ert-deftest test-org-incremental-source-exclusions ()
+  "Filter expanded file paths and prune excluded directory subtrees."
+  (let* ((root (make-temp-file "org-incremental-exclusions-" t))
+         (nested (expand-file-name "nested" root))
+         (excluded-directory (expand-file-name "excluded" root))
+         (allowed (expand-file-name "allowed.org" root))
+         (ignored-file (expand-file-name "ignored.org" root))
+         (nested-allowed (expand-file-name "nested.org" nested))
+         (excluded-file (expand-file-name "hidden.org" excluded-directory))
+         (all-files (list allowed ignored-file nested-allowed excluded-file))
+         (allowed-files (list allowed nested-allowed)))
+    (unwind-protect
+        (progn
+          (make-directory nested)
+          (make-directory excluded-directory)
+          (dolist (file all-files)
+            (with-temp-file file (insert "* Source\n")))
+
+          ;; Nil and accidentally empty entries do not exclude any sources.
+          (let ((org-incremental-excluded-path-regexps nil))
+            (should (equal (sort (org-incremental--normalize-sources root)
+                                 #'string-lessp)
+                           (sort (copy-sequence all-files) #'string-lessp))))
+          (let ((org-incremental-excluded-path-regexps '("")))
+            (should (equal (sort (org-incremental--normalize-sources root)
+                                 #'string-lessp)
+                           (sort (copy-sequence all-files) #'string-lessp))))
+
+          ;; Exclusions apply to discovered files, directory subtrees, and
+          ;; explicit file sources.  Overlapping roots remain deduplicated.
+          (let ((org-incremental-excluded-path-regexps
+                 (list (concat "\\`" (regexp-quote ignored-file) "\\'")
+                       (concat "\\`" (regexp-quote excluded-directory)
+                               "\\(?:/\\|\\'\\)"))))
+            (should (equal
+                     (sort (org-incremental--normalize-sources
+                            (list root nested ignored-file excluded-file))
+                           #'string-lessp)
+                     (sort (copy-sequence allowed-files) #'string-lessp)))
+            (let ((ignored-buffer (find-file-noselect ignored-file)))
+              (unwind-protect
+                  (progn
+                    (with-current-buffer ignored-buffer (org-mode))
+                    (should-not
+                     (org-incremental--normalize-sources ignored-buffer)))
+                (kill-buffer ignored-buffer)))))
+      (delete-directory root t))))
+
 (ert-deftest test-org-incremental-source-normalization-invalid-path ()
   "Reject invalid queue roots with a package-level error."
   (let ((missing (make-temp-name
@@ -1315,6 +1405,7 @@ on repository fixtures or the user's Org configuration.
           (with-temp-file ignored
             (insert "* NEXT Not an Org source :incremental:\n"))
           (let ((org-incremental-directories root)
+                (org-incremental-excluded-path-regexps nil)
                 (org-incremental-todo-keywords "NEXT")
                 (org-incremental-current-queue nil)
                 (org-incremental-current-queue-position 0)
