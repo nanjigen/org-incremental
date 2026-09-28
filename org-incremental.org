@@ -2950,12 +2950,36 @@ https://github.com/sp1ff/elfeed-score
 :END:
 
 #+begin_src emacs-lisp :noweb yes :noweb-ref minor-mode :results silent
+(defvar org-incremental-mode nil)
+
+(defun org-incremental-mode-line-string ()
+  "Return compact active-session state for the mode line."
+  (when (and org-incremental-mode org-incremental-current-queue)
+    (let ((element (org-incremental-current-element)))
+      (if (org-incremental-element-p element)
+          (format " OrgInc %d/%d · P%s · AF%s · %s→%sd"
+                  (1+ org-incremental-current-queue-position)
+                  (length org-incremental-current-queue)
+                  (org-incremental--display-priority
+                   (org-incremental--element-priority element))
+                  (or (org-incremental--element-a-factor element) "—")
+                  (or (org-incremental--element-old-interval element) "—")
+                  (or (org-incremental--element-new-interval element) "—"))
+        (format " OrgInc %d/%d"
+                (1+ org-incremental-current-queue-position)
+                (length org-incremental-current-queue))))))
+
+(defvar org-incremental-mode-line-format
+  '(:eval (org-incremental-mode-line-string))
+  "Reusable mode-line construct for an active incremental session.")
+
 (define-minor-mode org-incremental-mode
   "Mark the current Org buffer as the active incremental session buffer.
 Start a session with `org-incremental' and finish it with
 `org-incremental-end-session'."
-  :lighter " OrgInc"
-  :keymap nil)
+  :lighter org-incremental-mode-line-format
+  :keymap nil
+  (force-mode-line-update))
 #+end_src
 
 Check whether buffer is an incrementalised one.
@@ -3311,6 +3335,315 @@ Existing SRS algorithms in Emacs:
 Other implementations:
 - https://github.com/bjsi/incremental-writing/blob/master/src/scheduler.ts
 
+* v0.3 element browser
+
+The package-owned browser consumes =org-incremental-element= records through
+the model/query API.  It does not parse org-ql results, inspect org-element
+plists, or depend on live source markers.  Org files remain canonical and are
+opened normally only when the user visits or reviews a selected row.
+
+#+begin_src elisp :noweb-ref browser :results silent
+(defcustom org-incremental-list-buffer "*org-incremental: Elements*"
+  "Buffer name used by the package-owned element browser."
+  :type 'string
+  :group 'org-incremental)
+
+(defvar-local org-incremental-list--elements nil
+  "Domain elements displayed in the current browser buffer.")
+
+(defvar-local org-incremental-list--table nil
+  "Vtable displayed in the current browser buffer.")
+
+(defun org-incremental--display-date (timestamp)
+  "Return date-only display text for Org TIMESTAMP."
+  (if (and timestamp
+           (string-match "[<[]\\([0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]\\)"
+                         timestamp))
+      (match-string 1 timestamp)
+    "—"))
+
+(defun org-incremental--display-priority (priority)
+  "Return compact display text for PRIORITY."
+  (cond ((null priority) "—")
+        ((and (integerp priority) (<= 0 priority 9))
+         (number-to-string priority))
+        ((characterp priority) (char-to-string priority))
+        (t (format "%s" priority))))
+
+(defun org-incremental--reviewed-today-p (element)
+  "Return non-nil when ELEMENT was last reviewed today."
+  (equal (org-incremental--display-date
+          (org-incremental--element-last-reviewed element))
+         (format-time-string "%Y-%m-%d")))
+
+(defun org-incremental--scheduled-today-p (element)
+  "Return non-nil when ELEMENT is scheduled today."
+  (equal (org-incremental--display-date
+          (org-incremental--element-scheduled element))
+         (format-time-string "%Y-%m-%d")))
+
+(defun org-incremental-list--header-line ()
+  "Return declarative status text for the current browser."
+  (format " Outstanding %d · Due today %d · Reviewed today %d · Session %d/%d"
+          (length org-incremental-list--elements)
+          (cl-count-if #'org-incremental--scheduled-today-p
+                       org-incremental-list--elements)
+          (cl-count-if #'org-incremental--reviewed-today-p
+                       org-incremental-list--elements)
+          (if org-incremental-current-queue
+              (1+ org-incremental-current-queue-position)
+            0)
+          (length org-incremental-current-queue)))
+
+(defun org-incremental-list--columns ()
+  "Return vtable column definitions for domain elements."
+  (list
+   (list :name "Pri" :width 4
+         :getter (lambda (element _table)
+                   (org-incremental--display-priority
+                    (org-incremental--element-priority element))))
+   (list :name "Title" :width 38 :primary 'ascend
+         :getter (lambda (element _table)
+                   (or (org-incremental--element-title element) "")))
+   (list :name "Reps" :width 6 :align 'right
+         :getter (lambda (element _table)
+                   (org-incremental--element-total-repeats element)))
+   (list :name "Interval" :width 9 :align 'right
+         :getter (lambda (element _table)
+                   (org-incremental--element-new-interval element)))
+   (list :name "Last review" :width 12
+         :getter (lambda (element _table)
+                   (org-incremental--display-date
+                    (org-incremental--element-last-reviewed element))))
+   (list :name "Scheduled" :width 12
+         :getter (lambda (element _table)
+                   (org-incremental--display-date
+                    (org-incremental--element-scheduled element))))))
+
+(defun org-incremental-list-current-element ()
+  "Return the domain element on the current browser row."
+  (or (vtable-current-object)
+      (user-error "No incremental element on this row")))
+
+(defun org-incremental-list--goto-element (element)
+  "Move point to browser row for ELEMENT, returning its position."
+  (goto-char (point-min))
+  (when-let* ((table-start
+               (text-property-any (point-min) (point-max)
+                                  'vtable org-incremental-list--table)))
+    (goto-char table-start)
+    (vtable-goto-object element)))
+
+(defun org-incremental-list-visit (&optional element)
+  "Visit browser ELEMENT, defaulting to the row at point."
+  (interactive)
+  (org-incremental-element-visit
+   (or element (org-incremental-list-current-element))))
+
+(defun org-incremental-list-review (&optional element)
+  "Review browser ELEMENT, defaulting to the row at point, then refresh."
+  (interactive)
+  (org-incremental-element-review
+   (or element (org-incremental-list-current-element)))
+  (org-incremental-list-refresh))
+
+(defun org-incremental-list-next ()
+  "Move to the next browser row."
+  (interactive)
+  (forward-line 1)
+  (while (and (not (eobp)) (not (vtable-current-object)))
+    (forward-line 1)))
+
+(defun org-incremental-list-previous ()
+  "Move to the previous browser row."
+  (interactive)
+  (forward-line -1)
+  (while (and (not (bobp)) (not (vtable-current-object)))
+    (forward-line -1)))
+
+(defvar-keymap org-incremental-list-mode-map
+  :parent magit-section-mode-map
+  "RET" #'org-incremental-list-visit
+  "g" #'org-incremental-list-refresh
+  "n" #'org-incremental-list-next
+  "p" #'org-incremental-list-previous
+  "r" #'org-incremental-list-review
+  "?" #'org-incremental-dispatch)
+
+(define-derived-mode org-incremental-list-mode magit-section-mode
+  "Org-Incremental"
+  "Major mode for browsing package-owned incremental element records."
+  (setq-local truncate-lines t)
+  (setq-local revert-buffer-function
+              (lambda (&rest _ignore) (org-incremental-list-refresh))))
+
+(defun org-incremental-list--render ()
+  "Render `org-incremental-list--elements' in the current browser."
+  (let ((inhibit-read-only t))
+    (erase-buffer)
+    (magit-insert-section (org-incremental-browser)
+      (magit-insert-heading "Org Incremental")
+      (insert "\n")
+      (magit-insert-section (overview)
+        (magit-insert-heading "Overview")
+        (insert (format "  Outstanding: %d\n"
+                        (length org-incremental-list--elements)))
+        (insert (format "  Due today:   %d\n"
+                        (cl-count-if #'org-incremental--scheduled-today-p
+                                     org-incremental-list--elements)))
+        (insert (format "  Reviewed:    %d\n\n"
+                        (cl-count-if #'org-incremental--reviewed-today-p
+                                     org-incremental-list--elements))))
+      (magit-insert-section (outstanding)
+        (magit-insert-heading "Outstanding")
+        (setq org-incremental-list--table
+              (make-vtable
+               :columns (org-incremental-list--columns)
+               :objects org-incremental-list--elements
+               :use-header-line nil
+               :actions (list "RET" #'org-incremental-list-visit
+                              "r" #'org-incremental-list-review)
+               :separator-width 2))))
+    (setq-local header-line-format (org-incremental-list--header-line))
+    (goto-char (point-min))
+    (when-let* ((first (car org-incremental-list--elements)))
+      (org-incremental-list--goto-element first))))
+
+(defun org-incremental-list-refresh ()
+  "Requery and redraw the current package-owned browser."
+  (interactive)
+  (unless (derived-mode-p 'org-incremental-list-mode)
+    (user-error "Not in an org-incremental browser"))
+  (setq org-incremental-list--elements
+        (org-incremental-outstanding-elements))
+  (org-incremental-list--render))
+
+(defun org-incremental-list ()
+  "Open or refresh the package-owned incremental element browser."
+  (interactive)
+  (let ((buffer (get-buffer-create org-incremental-list-buffer)))
+    (with-current-buffer buffer
+      (unless (derived-mode-p 'org-incremental-list-mode)
+        (org-incremental-list-mode))
+      (org-incremental-list-refresh))
+    (pop-to-buffer buffer)))
+
+(defun org-incremental-agenda ()
+  "Open a genuine Org Agenda containing outstanding incremental elements."
+  (interactive)
+  (let* ((sources (org-incremental--normalize-sources
+                   org-incremental-directories))
+         (org-agenda-files (cl-remove-if #'bufferp sources))
+         (org-agenda-custom-commands
+          `(("i" "Incremental outstanding"
+             ((org-ql-block
+               ,(org-incremental--default-query)
+               ((org-ql-block-header "Incremental outstanding"))))))))
+    (org-agenda nil "i")))
+
+(transient-define-prefix org-incremental-dispatch ()
+  "Command surface for sessions, elements, and views."
+  [["Session"
+    ("s" "Start" org-incremental)
+    ("n" "Review and next" org-incremental-goto-next)
+    ("p" "Previous" org-incremental-goto-previous)
+    ("e" "End" org-incremental-end-session)]
+   ["Item"
+    ("r" "Review selected" org-incremental-list-review)]
+   ["Views"
+    ("l" "Element browser" org-incremental-list)
+    ("a" "Native agenda" org-incremental-agenda)
+    ("c" "Completed/recent" org-incremental-view-completed)]
+   ["Display"
+    ("g" "Refresh browser" org-incremental-list-refresh)]])
+#+end_src
+
+#+begin_src elisp :noweb-ref tests :results silent
+(ert-deftest test-org-incremental-list-renders-domain-objects ()
+  "Browser rows retain stable domain object identity and actions."
+  (let* ((first (org-incremental--make-element
+                 :title "First" :priority 1 :total-repeats 3
+                 :new-interval 8 :last-reviewed "[2026-09-28 Mon]"
+                 :scheduled "<2026-09-29 Tue>"))
+         (second (org-incremental--make-element
+                  :title "Second" :priority 4 :total-repeats 2
+                  :new-interval 4))
+         (org-incremental-list-buffer "*org-incremental-list-test*")
+         visited)
+    (unwind-protect
+        (cl-letf (((symbol-function 'org-incremental-outstanding-elements)
+                   (lambda (&rest _) (list first second)))
+                  ((symbol-function 'org-incremental-element-visit)
+                   (lambda (element) (setq visited element))))
+          (save-window-excursion
+            (org-incremental-list)
+            (with-current-buffer org-incremental-list-buffer
+              (should (derived-mode-p 'org-incremental-list-mode))
+              (should (object-of-class-p org-incremental-list--table 'vtable))
+              (should (= (length (vtable-objects
+                                  org-incremental-list--table)) 2))
+              (vtable-goto-object second)
+              (should (eq (vtable-current-object) second))
+              (org-incremental-list-visit)
+              (should (eq visited second))
+              (should (string-match-p "Outstanding 2" header-line-format)))))
+      (when (get-buffer org-incremental-list-buffer)
+        (kill-buffer org-incremental-list-buffer)))))
+
+(ert-deftest test-org-incremental-list-refresh-replaces-stale-data ()
+  "Refreshing the browser replaces its fetched objects."
+  (with-temp-buffer
+    (org-incremental-list-mode)
+    (let ((fresh (org-incremental--make-element :title "Fresh")))
+      (setq org-incremental-list--elements
+            (list (org-incremental--make-element :title "Stale")))
+      (cl-letf (((symbol-function 'org-incremental-outstanding-elements)
+                 (lambda (&rest _) (list fresh))))
+        (org-incremental-list-refresh)
+        (should (equal org-incremental-list--elements (list fresh)))
+        (should (eq (car (vtable-objects org-incremental-list--table))
+                    fresh))))))
+
+(ert-deftest test-org-incremental-mode-line-session-state ()
+  "Session mode-line text follows queue position and disappears on end."
+  (with-temp-buffer
+    (org-mode)
+    (let ((first (org-incremental--make-element
+                  :priority 4 :a-factor 1.68
+                  :old-interval 13 :new-interval 22))
+          (second (org-incremental--make-element
+                   :priority 1 :a-factor 2
+                   :old-interval 4 :new-interval 8))
+          (org-incremental-current-queue-position 0)
+          (org-incremental-session-buffer (current-buffer))
+          (org-incremental-save-buffers-after-writing-sessions-p nil))
+      (setq org-incremental-current-queue (list first second))
+      (should-not (org-incremental-mode-line-string))
+      (org-incremental-mode 1)
+      (should (string-match-p "OrgInc 1/2.*P4.*13→22d"
+                              (org-incremental-mode-line-string)))
+      (setq org-incremental-current-queue-position 1)
+      (should (string-match-p "OrgInc 2/2.*P1.*4→8d"
+                              (org-incremental-mode-line-string)))
+      (org-incremental-end-session)
+      (should-not (org-incremental-mode-line-string)))))
+
+(ert-deftest test-org-incremental-agenda-uses-native-custom-command ()
+  "Agenda bridge delegates to a genuine org-ql Agenda block."
+  (let (captured-command captured-files)
+    (cl-letf (((symbol-function 'org-incremental--normalize-sources)
+               (lambda (_sources) '("one.org" "two.org")))
+              ((symbol-function 'org-agenda)
+               (lambda (_arg key)
+                 (setq captured-command
+                       (assoc key org-agenda-custom-commands)
+                       captured-files org-agenda-files))))
+      (org-incremental-agenda)
+      (should (equal captured-files '("one.org" "two.org")))
+      (should (equal (car captured-command) "i"))
+      (should (eq (car (car (nth 2 captured-command))) 'org-ql-block)))))
+#+end_src
+
 Other:
 - https://github.com/kpence/org-sm/blob/master/org-sm.el
 
@@ -3331,7 +3664,7 @@ Other:
 
 ;; Author: Daniel Otto
 ;; Version: 0.3.0
-;; Package-Requires: ((emacs "29.1") (org "9.6") (org-contrib "0.8") (org-ql "0.8.10"))
+;; Package-Requires: ((emacs "29.1") (org "9.6") (org-contrib "0.8") (org-ql "0.8.10") (magit-section "4.0") (transient "0.7"))
 
 ;; URL: https://github.com/nanjigen/org-incremental
 
@@ -3392,6 +3725,7 @@ Use ~org-transclude~ with a temporary buffer to programmatically generate an up-
 
 ;;;; Requirements
 (require 'cl-lib)
+(require 'subr-x)
 (require 'org)
 (require 'org-element)
 (require 'org-expiry)
@@ -3399,6 +3733,9 @@ Use ~org-transclude~ with a temporary buffer to programmatically generate an up-
 (require 'org-ql)
 (require 'org-ql-search)
 (require 'org-ql-view)
+(require 'magit-section)
+(require 'transient)
+(require 'vtable)
 (require 'org-incremental-scheduler)
 
 ;;;; Constants
@@ -3488,6 +3825,8 @@ See `org-show-set-visibility' for possible values"
 <<start-session>>
 
 <<queue-goto-functions>>
+
+<<browser>>
 
 ;;; Footer
 
@@ -3617,7 +3956,8 @@ Setup manifest file:
 (specifications->manifest
  '("emacs"
    "emacs-org-contrib"
-   "emacs-org-ql"))
+   "emacs-org-ql"
+   "emacs-magit"))
 #+end_src
 
 Run tests in clean room:

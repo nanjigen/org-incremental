@@ -3,4 +3,5 @@
 (specifications->manifest
  '("emacs"
    "emacs-org-contrib"
-   "emacs-org-ql"))
+   "emacs-org-ql"
+   "emacs-magit"))
