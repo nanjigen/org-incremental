@@ -1309,6 +1309,15 @@ major-mode hooks are suppressed."
       (unless success
         (org-incremental--kill-scan-buffers (list buffer))))))
 
+(defun org-incremental--scan-buffer-has-headings-p (buffer)
+  "Return non-nil when Org scan BUFFER contains at least one heading."
+  (with-current-buffer buffer
+    (save-excursion
+      (save-restriction
+        (widen)
+        (goto-char (point-min))
+        (re-search-forward org-outline-regexp-bol nil t)))))
+
 (defun org-incremental--scan-sources (sources)
   "Return scan buffers and temporary buffers prepared from SOURCES.
 Already-open file buffers and explicit live buffer sources are reused.  Closed
@@ -1319,14 +1328,17 @@ files are read into temporary buffers without normal file-visiting behavior."
           (dolist (source sources)
             (cond
              ((bufferp source)
-              (push source scan-sources))
+              (when (org-incremental--scan-buffer-has-headings-p source)
+                (push source scan-sources)))
              ((stringp source)
               (let ((existing (find-buffer-visiting source)))
                 (if existing
-                    (push existing scan-sources)
+                    (when (org-incremental--scan-buffer-has-headings-p existing)
+                      (push existing scan-sources))
                   (let ((buffer (org-incremental--make-scan-buffer source)))
-                    (push buffer scan-sources)
-                    (push buffer temporary-buffers)))))))
+                    (push buffer temporary-buffers)
+                    (when (org-incremental--scan-buffer-has-headings-p buffer)
+                      (push buffer scan-sources))))))))
           (setq success t)
           (list :sources (nreverse scan-sources)
                 :temporary-buffers (nreverse temporary-buffers)))
@@ -1341,10 +1353,11 @@ never receives their paths.  Existing user-open buffers are preserved."
          (scan-sources (plist-get scan :sources))
          (temporary-buffers (plist-get scan :temporary-buffers)))
     (unwind-protect
-        (mapcar #'org-incremental--element-to-queue-entry
-                (org-ql-select scan-sources query
-                  :action 'element-with-markers
-                  :sort sort))
+        (when scan-sources
+          (mapcar #'org-incremental--element-to-queue-entry
+                  (org-ql-select scan-sources query
+                    :action 'element-with-markers
+                    :sort sort)))
       (org-incremental--kill-scan-buffers temporary-buffers))))
 
 #+end_src
@@ -1462,6 +1475,42 @@ on repository fixtures or the user's Org configuration.
       (let ((buffer (find-buffer-visiting file)))
         (when buffer (kill-buffer buffer)))
       (delete-file file))))
+
+(ert-deftest test-org-incremental-skips-headingless-scan-sources ()
+  "Do not pass headingless scan buffers to `org-ql-select'."
+  (let ((headingless (make-temp-file
+                      "org-incremental-headingless-" nil ".org"
+                      "#+TITLE: Metadata only\n"))
+        (populated (make-temp-file
+                    "org-incremental-populated-" nil ".org"
+                    "#+TODO: NEXT | DONE\n* NEXT Populated :incremental:\n"))
+        (original-select (symbol-function 'org-ql-select))
+        selected-source-count)
+    (unwind-protect
+        (cl-letf (((symbol-function 'org-ql-select)
+                   (lambda (sources query &rest arguments)
+                     (setq selected-source-count (length sources))
+                     (should (cl-every
+                              #'org-incremental--scan-buffer-has-headings-p
+                              sources))
+                     (apply original-select sources query arguments))))
+          (let ((results (org-incremental-selection
+                          (list headingless populated)
+                          '(and (tags "incremental") (todo "NEXT"))
+                          nil)))
+            (should (equal (mapcar #'org-incremental-queue-entry-title results)
+                           '("Populated")))
+            (should (= selected-source-count 1)))
+          (setq selected-source-count 'not-called)
+          (should-not (org-incremental-selection
+                       (list headingless) '(tags "incremental") nil))
+          (should (eq selected-source-count 'not-called))
+          (should-not (find-buffer-visiting headingless))
+          (should-not (find-buffer-visiting populated)))
+      (dolist (file (list headingless populated))
+        (let ((buffer (find-buffer-visiting file)))
+          (when buffer (kill-buffer buffer)))
+        (delete-file file)))))
 
 (ert-deftest test-org-incremental-selection-preserves-open-buffer ()
   "Do not kill a source buffer that the user had open before selection."
@@ -1904,6 +1953,12 @@ The ~:buffer:~ and ~:header~ properties should be customizable variables.
 #+end_src
 
 #+begin_src elisp :noweb-ref queue-views :results silent
+(defvar org-incremental-view-entry-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map (kbd "RET") #'org-incremental-view-visit)
+    map)
+  "Keymap attached to rendered queue entries for durable navigation.")
+
 (defun org-incremental--queue-entry-display-string (entry)
   "Return a rendered copy for durable queue ENTRY.
 The copy retains org-ql presentation properties and carries ENTRY as durable
@@ -1911,7 +1966,10 @@ navigation metadata."
   (let ((string
          (copy-sequence (org-incremental-queue-entry-display-string entry))))
     (add-text-properties
-     0 (length string) (list 'org-incremental-entry entry) string)
+     0 (length string)
+     (list 'org-incremental-entry entry
+           'keymap org-incremental-view-entry-map)
+     string)
     string))
 
 (defun org-incremental-view-visit ()
@@ -1983,7 +2041,10 @@ BUFFER and HEADER default to `org-incremental-buffer' and
                        '("formatted-one" "formatted-two")))
         (should (eq (get-text-property 0 'org-incremental-entry
                                        (car strings))
-                    (car entries)))))))
+                    (car entries)))
+        (should (eq (lookup-key (get-text-property 0 'keymap (car strings))
+                                (kbd "RET"))
+                    #'org-incremental-view-visit))))))
 #+end_src
 
 #+begin_src elisp :noweb-ref queue-views :results silent
@@ -2041,7 +2102,9 @@ This does not replace or otherwise mutate the active session queue."
                        (get-text-property (point) 'org-incremental-entry)))
               (should (eq (lookup-key (current-local-map) (kbd "RET"))
                           #'org-incremental-view-visit))
-              (org-incremental-view-visit))
+              (should (eq (key-binding (kbd "RET"))
+                          #'org-incremental-view-visit))
+              (call-interactively (key-binding (kbd "RET"))))
             (let ((source-buffer (find-buffer-visiting file)))
               (should (buffer-live-p source-buffer))
               (with-current-buffer source-buffer
