@@ -13,6 +13,10 @@ This package is designed to bring [[https://supermemo.guru/wiki/Incremental_writ
 
 It works with [[https://github.com/alphapapa/org-ql][org-ql]] in order to find and generate lists of included files.
 
+The v0.3 development line requires Emacs 29.1 or newer.  This baseline permits
+the package-owned browser to use built-in =vtable= directly instead of carrying
+compatibility UI code for older Emacs releases.
+
 Key functions we would need:
 - A-factor
 - Priority
@@ -3220,8 +3224,8 @@ Other:
 ;;; Header:
 
 ;; Author: Daniel Otto
-;; Version: 0.2.0
-;; Package-Requires: ((emacs "27.1") (org "9.4") (org-contrib "0.8") (org-ql "0.8.10"))
+;; Version: 0.3.0
+;; Package-Requires: ((emacs "29.1") (org "9.6") (org-contrib "0.8") (org-ql "0.8.10"))
 
 ;; URL: https://github.com/nanjigen/org-incremental
 
