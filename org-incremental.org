@@ -1693,12 +1693,28 @@ BUFFER and HEADER default to `org-incremental-buffer' and
     (org-ql-view--display
      :buffer (or buffer org-incremental-buffer)
      :header (or header org-incremental-header)
-     :string (mapconcat #'identity strings "\n"))))
+     :strings strings)))
 
 (defun org-incremental-view (results &optional buffer header)
   "Compatibility wrapper for rendering RESULTS."
   (org-incremental-render-queue results buffer header))
 
+#+end_src
+
+#+begin_src elisp :noweb-ref tests :results silent
+(ert-deftest test-org-incremental-render-queue-display-arguments ()
+  "Pass formatted queue entries through the current `org-ql' view API."
+  (let (display-arguments)
+    (cl-letf (((symbol-function 'org-ql-view--format-element)
+               (lambda (element) (format "formatted-%s" element)))
+              ((symbol-function 'org-ql-view--display)
+               (lambda (&rest arguments)
+                 (setq display-arguments arguments))))
+      (org-incremental-render-queue '(one two) "*queue-test*" "Queue test")
+      (should (equal display-arguments
+                     '(:buffer "*queue-test*"
+                       :header "Queue test"
+                       :strings ("formatted-one" "formatted-two")))))))
 #+end_src
 
 #+begin_src elisp :noweb-ref queue-views :results silent
@@ -2378,8 +2394,27 @@ View the queued items:
     (org-ql-view--display
      :buffer org-incremental-simple-buffer
      :header org-incremental-simple-header
-     :string (mapconcat #'identity strings "\n"))))
+     :strings strings)))
   #+end_src
+
+#+begin_src elisp :noweb-ref tests :results silent
+(ert-deftest test-org-incremental-view-simple-display-arguments ()
+  "Pass formatted simple-queue entries through the current `org-ql' view API."
+  (let ((org-incremental-simple-current-queue '(one two))
+        (org-incremental-simple-buffer "*simple-test*")
+        (org-incremental-simple-header "Simple test")
+        display-arguments)
+    (cl-letf (((symbol-function 'org-ql-view--format-element)
+               (lambda (element) (format "formatted-%s" element)))
+              ((symbol-function 'org-ql-view--display)
+               (lambda (&rest arguments)
+                 (setq display-arguments arguments))))
+      (org-incremental-view-simple)
+      (should (equal display-arguments
+                     '(:buffer "*simple-test*"
+                       :header "Simple test"
+                       :strings ("formatted-one" "formatted-two")))))))
+#+end_src
 
 Example configuration using org-brain.
 #+begin_src elisp :eval no
