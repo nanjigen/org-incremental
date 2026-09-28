@@ -696,11 +696,14 @@ Headlines are considered 'elements' when tagged with the =org-incremental-elemen
 
 #+end_src
 
-And are drawn from the customizable list of directories:
+And are drawn from configurable directory roots.  Historical scalar values
+set with ~setq~ remain supported and are normalized internally.
 #+begin_src elisp :noweb-ref element-options :results silent
-(defcustom org-incremental-directories (org-agenda-files)
-  "Files or directories searched for incremental elements."
-  :type '(repeat file)
+(defcustom org-incremental-directories (list org-directory)
+  "Directories recursively searched for incremental Org elements.
+A scalar directory string is also accepted for compatibility.  Selection
+normalizes these roots to readable Org files before calling `org-ql'."
+  :type '(repeat directory)
   :group 'org-incremental)
 #+end_src
 
@@ -708,10 +711,35 @@ If wanted, we can further refine our list of actionable candidates by specifying
 
 #+begin_src elisp :noweb-ref element-options :results silent
 (defcustom org-incremental-todo-keywords nil
-  "If non-nil, supply list as viable TODO keyword(s)
-to consider as rep-able `org-incremental' entries"
-  :type '(repeat string)
+  "TODO states eligible for incremental sessions.
+Either one string or a list of strings is accepted.  Nil disables TODO-state
+filtering."
+  :type '(choice (const :tag "Any TODO state" nil)
+                 (string :tag "One TODO state")
+                 (repeat :tag "TODO states" string))
   :group 'org-incremental)
+#+end_src
+
+#+begin_src elisp :noweb-ref element-option-functions :results silent
+(defun org-incremental--normalize-todo-keywords (&optional value)
+  "Return VALUE as a validated list of TODO keyword strings.
+VALUE defaults to `org-incremental-todo-keywords'."
+  (let ((keywords (if (null value) org-incremental-todo-keywords value)))
+    (cond
+     ((null keywords) nil)
+     ((stringp keywords)
+      (if (string= keywords "")
+          (user-error "org-incremental TODO keyword cannot be empty")
+        (list keywords)))
+     ((listp keywords)
+      (unless (cl-every (lambda (keyword)
+                          (and (stringp keyword)
+                               (not (string= keyword ""))))
+                        keywords)
+        (user-error "org-incremental TODO keywords must be non-empty strings"))
+      (delete-dups (copy-sequence keywords)))
+     (t
+      (user-error "org-incremental TODO keywords must be a string or list")))))
 #+end_src
 
 ** Element properties
@@ -737,7 +765,9 @@ Here we perform various checks over the element in question
 (defun org-incremental-operable-entry-p (marker)
   "Is MARKER, or the point, in an operable TODO?"
   (org-with-point-at (or marker (point))
-    (member (org-get-todo-state) org-incremental-todo-keywords)))
+    (let ((keywords (org-incremental--normalize-todo-keywords)))
+      (or (null keywords)
+          (member (org-get-todo-state) keywords)))))
 
 #+end_src
 
@@ -1114,9 +1144,61 @@ In order to ease testing =org-ql-select= is put into its own function.
 Results are sorted by priority and date:
 
 #+begin_src elisp :noweb-ref que-funcs :results silent
-(defun org-incremental-selection (dir query sort)
-  "Run a `org-ql-select' over DIR against the QUERY, SORTing."
-  (org-ql-select dir query
+(defun org-incremental--normalize-sources (&optional sources)
+  "Expand configured SOURCES into unique readable Org files or buffers.
+Directory roots are searched recursively.  A scalar path, a list of paths,
+explicit Org files, and live Org buffers are accepted.  Invalid values signal
+a package-level `user-error' before `org-ql-select' is called."
+  (let* ((configured (if (null sources) org-incremental-directories sources))
+         (items (cond ((null configured) nil)
+                      ((or (stringp configured) (bufferp configured))
+                       (list configured))
+                      ((listp configured) configured)
+                      (t (user-error
+                          "org-incremental directories must be a path or list"))))
+         files-or-buffers)
+    (dolist (item items)
+      (cond
+       ((bufferp item)
+        (unless (buffer-live-p item)
+          (user-error "org-incremental source buffer is not live"))
+        (with-current-buffer item
+          (unless (derived-mode-p 'org-mode)
+            (user-error "org-incremental source is not an Org buffer: %s"
+                        (buffer-name item))))
+        (push item files-or-buffers))
+       ((stringp item)
+        (let ((path (expand-file-name item)))
+          (cond
+           ((file-directory-p path)
+            (unless (file-readable-p path)
+              (user-error "org-incremental directory is not readable: %s" path))
+            (dolist (file (directory-files-recursively path "\\.org\\'"))
+              (when (file-readable-p file)
+                (push file files-or-buffers))))
+           ((and (file-regular-p path)
+                 (file-readable-p path)
+                 (string-match-p "\\.org\\'" path))
+            (push path files-or-buffers))
+           ((file-exists-p path)
+            (user-error "org-incremental source is not a readable Org file: %s"
+                        path))
+           (t
+            (user-error "org-incremental source does not exist: %s" path)))))
+       (t
+        (user-error "org-incremental source must be a directory, Org file, or buffer"))))
+    (let ((seen (make-hash-table :test #'equal))
+          unique)
+      (dolist (source (nreverse files-or-buffers))
+        (let ((key (if (bufferp source) source (file-truename source))))
+          (unless (gethash key seen)
+            (puthash key t seen)
+            (push source unique))))
+      (nreverse unique))))
+
+(defun org-incremental-selection (sources query sort)
+  "Run `org-ql-select' over normalized SOURCES against QUERY, using SORT."
+  (org-ql-select sources query
     :action 'element-with-markers
     :sort sort))
 
@@ -1163,6 +1245,104 @@ on repository fixtures or the user's Org configuration.
         (when buffer
           (kill-buffer buffer)))
       (delete-file file))))
+
+(ert-deftest test-org-incremental-source-normalization ()
+  "Normalize scalar and overlapping directory roots to unique Org files."
+  (let ((org-incremental-directories nil))
+    (should-not (org-incremental--normalize-sources)))
+  (let* ((root (make-temp-file "org-incremental-sources-" t))
+         (nested (expand-file-name "nested" root))
+         (first (expand-file-name "a.org" root))
+         (second (expand-file-name "b.org" nested))
+         (ignored (expand-file-name "notes.txt" nested)))
+    (unwind-protect
+        (progn
+          (make-directory nested)
+          (with-temp-file first (insert "* First\n"))
+          (with-temp-file second (insert "* Second\n"))
+          (with-temp-file ignored (insert "not Org\n"))
+          (should (equal (sort (org-incremental--normalize-sources root)
+                               #'string-lessp)
+                         (sort (list first second) #'string-lessp)))
+          (should (equal (sort (org-incremental--normalize-sources
+                                (list root nested first))
+                               #'string-lessp)
+                         (sort (list first second) #'string-lessp))))
+      (delete-directory root t))))
+
+(ert-deftest test-org-incremental-source-normalization-invalid-path ()
+  "Reject invalid queue roots with a package-level error."
+  (let ((missing (make-temp-name
+                  (expand-file-name "org-incremental-missing-"
+                                    temporary-file-directory))))
+    (should-error (org-incremental--normalize-sources missing)
+                  :type 'user-error)))
+
+(ert-deftest test-org-incremental-todo-keyword-normalization ()
+  "Accept nil, historical scalar, and list-shaped TODO configuration."
+  (let ((org-incremental-todo-keywords nil))
+    (should-not (org-incremental--normalize-todo-keywords)))
+  (let ((org-incremental-todo-keywords "NEXT"))
+    (should (equal (org-incremental--normalize-todo-keywords) '("NEXT"))))
+  (let ((org-incremental-todo-keywords '("NEXT" "TODO" "NEXT")))
+    (should (equal (org-incremental--normalize-todo-keywords)
+                   '("NEXT" "TODO"))))
+  (let ((org-incremental-todo-keywords '("NEXT" 1)))
+    (should-error (org-incremental--normalize-todo-keywords)
+                  :type 'user-error)))
+
+(ert-deftest test-org-incremental-historical-scalar-configuration ()
+  "Exercise real recursive selection and session setup with scalar config."
+  (let* ((root (make-temp-file "org-incremental-history-" t))
+         (nested (expand-file-name "nested" root))
+         (first (expand-file-name "a.org" root))
+         (second (expand-file-name "b.org" nested))
+         (ignored (expand-file-name "ignored.txt" root)))
+    (unwind-protect
+        (progn
+          (make-directory nested)
+          (with-temp-file first
+            (insert (concat "#+TODO: NEXT TODO | DONE\n"
+                            "* NEXT Due :incremental:\n"
+                            "SCHEDULED: <2000-01-01>\n"
+                            "* TODO Wrong state :incremental:\n"
+                            "SCHEDULED: <2000-01-01>\n")))
+          (with-temp-file second
+            (insert (concat "#+TODO: NEXT TODO | DONE\n"
+                            "* NEXT Nested :incremental:\n"
+                            "* NEXT Future :incremental:\n"
+                            "SCHEDULED: <2999-01-01>\n")))
+          (with-temp-file ignored
+            (insert "* NEXT Not an Org source :incremental:\n"))
+          (let ((org-incremental-directories root)
+                (org-incremental-todo-keywords "NEXT")
+                (org-incremental-current-queue nil)
+                (org-incremental-current-queue-position 0)
+                (org-incremental-session-buffer nil)
+                (org-incremental-save-buffers-after-writing-sessions-p nil))
+            (let ((results (org-incremental-select-outstanding)))
+              (should (equal
+                       (sort (mapcar (lambda (element)
+                                       (org-element-property :raw-value element))
+                                     results)
+                             #'string-lessp)
+                       '("Due" "Nested"))))
+            (with-temp-buffer
+              (org-mode)
+              (cl-letf (((symbol-function 'org-incremental--visit-current-element)
+                         (lambda ()
+                           (org-incremental-mode 1)
+                           (setq org-incremental-session-buffer
+                                 (current-buffer)))))
+                (should (= (length (org-incremental)) 2))
+                (should org-incremental-mode)
+                (org-incremental-end-session)
+                (should-not org-incremental-mode)))))
+      (dolist (buffer (buffer-list))
+        (let ((file (buffer-file-name buffer)))
+          (when (and file (file-in-directory-p file root))
+            (kill-buffer buffer))))
+      (delete-directory root t))))
 
 #+end_src
 
@@ -1300,9 +1480,9 @@ Where am I running the test for current-shift?
 #+begin_src elisp :noweb-ref que-funcs :results silent
 (defun org-incremental--default-query ()
   "Build the default outstanding query from current configuration."
-  (let* ((tag-clause (list 'tags org-incremental-element-tag))
-         (todo-clause (and org-incremental-todo-keywords
-                           (cons 'todo org-incremental-todo-keywords)))
+  (let* ((keywords (org-incremental--normalize-todo-keywords))
+         (tag-clause (list 'tags org-incremental-element-tag))
+         (todo-clause (and keywords (cons 'todo keywords)))
          (eligibility (delq nil (list tag-clause todo-clause))))
     (list 'or
           (cons 'and (append eligibility '((scheduled :to today))))
@@ -1314,10 +1494,14 @@ Where am I running the test for current-shift?
 SOURCES defaults to `org-incremental-directories', QUERY defaults to
 `org-incremental-query', and SORT defaults to date then priority order.
 This function computes queue data without changing session state or UI."
-  (org-incremental-selection
-   (or sources org-incremental-directories)
-   (or query org-incremental-query (org-incremental--default-query))
-   (or sort '(date priority))))
+  (let ((normalized-sources
+         (org-incremental--normalize-sources
+          (or sources org-incremental-directories))))
+    (when normalized-sources
+      (org-incremental-selection
+       normalized-sources
+       (or query org-incremental-query (org-incremental--default-query))
+       (or sort '(date priority))))))
 
 (defun org-incremental-refresh-queue ()
   "Replace active session state with a freshly selected queue."
@@ -1337,13 +1521,15 @@ This function computes queue data without changing session state or UI."
         (org-incremental-directories '("configured.org"))
         (org-incremental-query '(tags "incremental"))
         captured)
-    (cl-letf (((symbol-function 'org-incremental-selection)
+    (cl-letf (((symbol-function 'org-incremental--normalize-sources)
+               (lambda (_sources) '("normalized.org")))
+              ((symbol-function 'org-incremental-selection)
                (lambda (sources query sort)
                  (setq captured (list sources query sort))
                  '(selected))))
       (should (equal (org-incremental-select-outstanding) '(selected)))
       (should (equal captured
-                     '(("configured.org") (tags "incremental") (date priority))))
+                     '(("normalized.org") (tags "incremental") (date priority))))
       (should (equal org-incremental-current-queue '(active))))))
 
 (ert-deftest test-org-incremental-refresh-queue-stores-selection ()
@@ -2446,6 +2632,8 @@ See `org-show-set-visibility' for possible values"
 <<midnight-shift-vars>>
 
 <<element-options>>
+
+<<element-option-functions>>
 
 <<midnight-shift-options>>
 
