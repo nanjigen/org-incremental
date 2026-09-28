@@ -436,10 +436,14 @@ The element is rescheduled using ~org~'s internal =org-schedule= function which 
          (total-reps (plist-get updates :total-repeats)))
   
     ;; Apply the mutations to each org element
-    (org-entry-put (point) "OLD_INTERVAL" (number-to-string (plist-get updates :old-interval)))
-    (org-entry-put (point) "NEW_INTERVAL" (number-to-string new-int))
-    (org-entry-put (point) "TOTAL_REPEATS" (number-to-string total-reps))
-    (org-entry-put (point) "LAST_REVIEWED" (org-incremental-time-to-inactive-org-timestamp now))
+    (org-entry-put (point) org-incremental-old-interval-property
+                   (number-to-string (plist-get updates :old-interval)))
+    (org-entry-put (point) org-incremental-new-interval-property
+                   (number-to-string new-int))
+    (org-entry-put (point) org-incremental-total-repeats-property
+                   (number-to-string total-reps))
+    (org-entry-put (point) org-incremental-last-reviewed-property
+                   (org-incremental-time-to-inactive-org-timestamp now))
     
     ;; Update native org scheduling
     (org-schedule nil (plist-get updates :scheduled-time))
@@ -450,52 +454,29 @@ The element is rescheduled using ~org~'s internal =org-schedule= function which 
 Integration test using a temporary buffer and ~cl-letf~:
 #+begin_src elisp :noweb-ref tests :eval yes :results silent
 (ert-deftest test-org-incremental-review-item-integration ()
-  "Verify that `org-incremental-review-item` accurately updates buffer properties and schedule tags."
+  "Review a historical A-FACTOR entry into coherent scheduling state."
   (with-temp-buffer
-    ;; 1. Setup Environment: Initialize major mode and dummy Org tree
     (org-mode)
-    (insert "* TODO Master Functional Programming in Elisp
+    (insert "* NEXT Historical element :incremental:
 :PROPERTIES:
 :NEW_INTERVAL: 4
-:A_FACTOR:    2.5
+:A-FACTOR: 2
 :TOTAL_REPEATS: 2
 :END:
 ")
-    
-    ;; 2. Place point (cursor) on the headline 
     (goto-char (point-min))
-    
-    ;; 3. Mock Environmental Dynamics
-    ;; Patch `current-time` so that test is deterministic regardless of when it runs.
-    ;; We also stub package's metadata extraction utilities for precise isolation.
-    (let ((mock-now (encode-time '(0 0 0 1 1 2026 nil nil nil)))) ; Fixed Anchor: Jan 1, 2026
-      (cl-letf* (((symbol-function 'current-time) 
-                  (lambda () mock-now))
-                 ((symbol-function 'org-incremental-entry-p) 
-                  (lambda () t))
-                 ((symbol-function 'org-incremental-element-current-interval) 
-                  (lambda () 4))
-                 ((symbol-function 'org-incremental-element-a-factor) 
-                  (lambda () 2.5))
-                 ((symbol-function 'org-incremental-element-total-repeats) 
-                  (lambda () 2))
-                 ((symbol-function 'org-incremental-time-to-inactive-org-timestamp) 
-                  (lambda (_time) "[2026-01-01 Thu]")))
-        
-        ;; 4. Execute the interactive command under test
+    (let ((mock-now (encode-time '(0 0 12 28 9 2026 nil nil nil))))
+      (cl-letf (((symbol-function 'current-time) (lambda () mock-now)))
+        (should (= (org-incremental-element-a-factor) 2))
         (org-incremental-review-item)
-        
-        ;; 5. Verification Phase: Assert property mutations match expected pure states
-        ;; (Interval 4 * A-Factor 2.5 = Next Interval 10)
         (should (equal (org-entry-get (point) "OLD_INTERVAL") "4"))
-        (should (equal (org-entry-get (point) "NEW_INTERVAL") "10"))
+        (should (equal (org-entry-get (point) "NEW_INTERVAL") "8"))
         (should (equal (org-entry-get (point) "TOTAL_REPEATS") "3"))
-        (should (equal (org-entry-get (point) "LAST_REVIEWED") "[2026-01-01 Thu]"))
-        
-        ;; 6. Verification Phase: Check Org-mode's native scheduling insertion
-        ;; 10 days added to Jan 1, 2026 lands precisely on Jan 11, 2026.
+        (should (equal (org-entry-get (point) "LAST_REVIEWED")
+                       "[2026-09-28 Mon]"))
+        (should (equal (org-entry-get (point) "A-FACTOR") "2"))
         (goto-char (point-min))
-        (should (search-forward "SCHEDULED: <2026-01-11" nil t))))))
+        (should (search-forward "SCHEDULED: <2026-10-06 Tue>" nil t))))))
 #+end_src
 
 #+begin_src elisp :eval yes :results silent
@@ -531,6 +512,10 @@ Customs
   :type 'string
   :group 'org-incremental)
 
+(defconst org-incremental--a-factor-property-aliases
+  '("A_FACTOR" "A-FACTOR")
+  "Known A-factor property names used by org-incremental releases.")
+
 (defcustom org-incremental-new-interval-property "NEW_INTERVAL"
   "Name of property to store the new interval value."
   :type 'string
@@ -557,13 +542,13 @@ Customs
   :group 'org-incremental)
 #+end_src
 
-Utility function to convert timestamps to org-mode format. We =car= ~org-time-stamp-formats~ to return only the date to avoid visual clutter in the resultant PROPERTIES drawer.
+Utility function to convert timestamps to a stable inactive Org date.  This is
+deliberately independent of the user's display-oriented
+=org-time-stamp-formats= configuration.
 #+begin_src elisp :noweb-ref element-rescheduler :results silent
 (defun org-incremental-time-to-inactive-org-timestamp (time)
-  "Convert TIME into org-mode timestamp."
-  (format-time-string
-   (concat "[" (substring (car org-time-stamp-formats) 1 -1) "]") ;; use car for DATE-ONLY
-   time))
+  "Convert TIME into a stable inactive Org date-only timestamp."
+  (format-time-string "[%Y-%m-%d %a]" time))
 #+end_src
 
 Test time logic using a time encoded in the test process's local timezone:
@@ -571,7 +556,7 @@ Test time logic using a time encoded in the test process's local timezone:
 (ert-deftest test-org-incremental-timestamp-formatting ()
   "Ensure time converts correctly to an inactive Org date-only string."
   (let* ((test-time (encode-time 0 19 11 6 12 2022))
-         (org-time-stamp-formats '("<%Y-%m-%d %a>" . "<%Y-%m-%d %a %H:%M>"))) ;; mock format
+         (org-time-stamp-formats '("Y-%m-%d broken" . "%")))
     (should (string= (org-incremental-time-to-inactive-org-timestamp test-time)
                      "[2022-12-06 Tue]"))))
 #+end_src
@@ -880,33 +865,58 @@ If we use the =#+org_incremental: t= buffer option perhaps we can steal ~org-aut
 Bring in some functionality for interacting with data stored the ~:PROPERTIES:~ drawer.
 
 #+begin_src elisp :noweb-ref element-stats :results silent
+(defun org-incremental--number-property (property aliases default)
+  "Read numeric PROPERTY at point, falling back through ALIASES and DEFAULT.
+The first present property wins.  Signal a clear error for non-numeric data."
+  (let* ((properties (delete-dups (cons property (copy-sequence aliases))))
+         (stored
+          (cl-loop for name in properties
+                   for value = (org-entry-get (point) name)
+                   when value return (cons name value))))
+    (if (null stored)
+        default
+      (unless (string-match-p
+               "\\`[[:space:]]*[+-]?[0-9]+\\(?:\\.[0-9]+\\)?[[:space:]]*\\'"
+               (cdr stored))
+        (user-error "Invalid numeric Org property %s: %S"
+                    (car stored) (cdr stored)))
+      (string-to-number (cdr stored)))))
+
 (defun org-incremental-element-old-interval (&optional default)
   "Return previous interval for element at point."
-  (let ((val (org-entry-get (point) org-incremental-old-interval-property)))
-    (if val
-        (string-to-number val)
-      (or default 0))))
+  (let ((value (org-incremental--number-property
+                org-incremental-old-interval-property nil (or default 0))))
+    (when (< value 0)
+      (user-error "OLD_INTERVAL must not be negative: %S" value))
+    value))
 
 (defun org-incremental-element-a-factor (&optional default)
-  "Return the A-factor for the element at point."
-  (let ((val (org-entry-get (point) org-incremental-a-factor-property)))
-    (if val
-        (string-to-number val)
-      (or default 0))))
+  "Return the A-factor for the element at point.
+Read the configured property first, then known historical property aliases.
+When none is stored, use DEFAULT or the package's base `a-factor'."
+  (let ((value (org-incremental--number-property
+                org-incremental-a-factor-property
+                org-incremental--a-factor-property-aliases
+                (or default a-factor))))
+    (unless (> value 0)
+      (user-error "A-factor must be greater than zero: %S" value))
+    value))
 
 (defun org-incremental-element-current-interval (&optional default)
   "Return pre-rep interval for element at point."
-  (let ((val (org-entry-get (point) org-incremental-new-interval-property)))
-    (if val
-        (string-to-number val)
-      (or default 0))))
+  (let ((value (org-incremental--number-property
+                org-incremental-new-interval-property nil (or default 1))))
+    (when (< value 0)
+      (user-error "NEW_INTERVAL must not be negative: %S" value))
+    value))
 
 (defun org-incremental-element-total-repeats (&optional default)
   "Return total number of repeats for the element at point."
-  (let ((val (org-entry-get (point) org-incremental-total-repeats-property)))
-    (if val
-        (string-to-number val)
-      (or default 0))))
+  (let ((value (org-incremental--number-property
+                org-incremental-total-repeats-property nil (or default 0))))
+    (unless (and (integerp value) (>= value 0))
+      (user-error "TOTAL_REPEATS must be a non-negative integer: %S" value))
+    value))
 
 #+end_src
 
@@ -955,6 +965,26 @@ Bring in some functionality for interacting with data stored the ~:PROPERTIES:~ 
                      '(:old-interval 3 :new-interval 7
                        :total-repeats 4 :a-factor 1.5
                        :last-reviewed nil))))))
+
+(ert-deftest test-org-incremental-property-access-safe-defaults ()
+  "Use safe defaults for missing state and reject corrupt scheduling data."
+  (with-temp-buffer
+    (org-mode)
+    (insert "* Element\n")
+    (goto-char (point-min))
+    (let ((a-factor 2.0))
+      (should (= (org-incremental-element-old-interval) 0))
+      (should (= (org-incremental-element-current-interval) 1))
+      (should (= (org-incremental-element-total-repeats) 0))
+      (should (= (org-incremental-element-a-factor) 2.0))
+      (org-set-property org-incremental-a-factor-property "0")
+      (should-error (org-incremental-element-a-factor) :type 'user-error)
+      (org-set-property org-incremental-a-factor-property "not-a-number")
+      (should-error (org-incremental-element-a-factor) :type 'user-error)
+      (org-delete-property org-incremental-a-factor-property)
+      (org-set-property org-incremental-total-repeats-property "1.5")
+      (should-error (org-incremental-element-total-repeats)
+                    :type 'user-error))))
 #+end_src
 
 #+begin_src elisp :noweb-ref element-stats :results silent
@@ -2132,6 +2162,36 @@ selection, rendering, and element visiting remain separate operations.
   "Return the durable entry at the active queue position, or nil."
   (nth org-incremental-current-queue-position org-incremental-current-queue))
 
+(defun org-incremental--fallback-heading-position (entry buffer)
+  "Resolve ID-less queue ENTRY to a heading position in BUFFER.
+Use the stored title to tolerate position shifts caused by earlier reviews,
+choosing the matching heading nearest the original fallback position."
+  (let ((fallback (or (org-incremental-queue-entry-position entry) 1))
+        (title (org-incremental-queue-entry-title entry)))
+    (with-current-buffer buffer
+      (save-excursion
+        (save-restriction
+          (widen)
+          (if title
+              (let (matches)
+                (goto-char (point-min))
+                (while (re-search-forward org-heading-regexp nil t)
+                  (goto-char (match-beginning 0))
+                  (when (equal (org-get-heading t t t t) title)
+                    (push (point) matches))
+                  (forward-line 1))
+                (unless matches
+                  (user-error "Org incremental heading no longer exists: %s"
+                              title))
+                (car (sort matches
+                           (lambda (left right)
+                             (< (abs (- left fallback))
+                                (abs (- right fallback)))))))
+            (goto-char (min (max (point-min) fallback) (point-max)))
+            (unless (org-at-heading-p)
+              (org-back-to-heading t))
+            (point)))))))
+
 (defun org-incremental--queue-entry-marker (entry)
   "Resolve durable queue ENTRY to a live marker.
 Prefer an existing Org ID within the recorded file, then use its fallback
@@ -2154,13 +2214,8 @@ position.  A non-file buffer source must still be live."
           (with-current-buffer buffer
             (save-restriction
               (widen)
-              (goto-char
-               (min (max (point-min)
-                         (or (org-incremental-queue-entry-position entry)
-                             (point-min)))
-                    (point-max)))
-              (unless (org-at-heading-p)
-                (org-back-to-heading t))
+              (goto-char (org-incremental--fallback-heading-position
+                          entry buffer))
               (point-marker)))))))
 
 (defun org-incremental--visit-element (element)
@@ -2336,10 +2391,12 @@ https://github.com/alphapapa/org-ql#listing--acting-on-results
 =org-ql-view--buffer=
 #+begin_src elisp :noweb-ref queue-goto-functions :results silent
 (defun org-incremental-goto-next ()
-  "Visit the next element, or end the session when the queue is exhausted."
+  "Review the current element, then visit the next one or end the session.
+If reviewing fails, leave the queue position and session state unchanged."
   (interactive)
   (unless org-incremental-mode
     (user-error "Not in an org-incremental session"))
+  (org-incremental-review-item)
   (if (org-incremental--move-queue-position 1)
       (org-incremental--visit-current-element)
     (org-incremental-end-session)))
@@ -2372,12 +2429,16 @@ Go back to recently completed via the =org-incremental-view-recent= function
           (org-incremental-current-queue-position 0)
           (org-incremental-session-buffer (current-buffer))
           (org-incremental-save-buffers-after-writing-sessions-p nil)
+          (review-count 0)
           visited)
       (org-incremental-mode 1)
-      (cl-letf (((symbol-function 'org-incremental--visit-current-element)
+      (cl-letf (((symbol-function 'org-incremental-review-item)
+                 (lambda () (setq review-count (1+ review-count))))
+                ((symbol-function 'org-incremental--visit-current-element)
                  (lambda ()
                    (setq visited (org-incremental-current-element)))))
         (org-incremental-goto-next)
+        (should (= review-count 1))
         (should (eq visited 'second))
         (should (= org-incremental-current-queue-position 1))
         (org-incremental-goto-previous)
@@ -2385,8 +2446,97 @@ Go back to recently completed via the =org-incremental-view-recent= function
         (should (= org-incremental-current-queue-position 0))
         (org-incremental-goto-next)
         (org-incremental-goto-next)
+        (should (= review-count 3))
         (should-not org-incremental-mode)
         (should-not org-incremental-current-queue)
+        (should (= org-incremental-current-queue-position 0))))))
+
+(ert-deftest test-org-incremental-goto-next-reviews-session-items ()
+  "Review each real queue item before advancing or ending its session."
+  (let ((file
+         (make-temp-file
+          "org-incremental-review-session-" nil ".org"
+          (concat
+           "#+TODO: NEXT | DONE\n"
+           "* NEXT First :incremental:\n"
+           ":PROPERTIES:\n:ID: review-first\n:A-FACTOR: 2\n"
+           ":NEW_INTERVAL: 4\n:TOTAL_REPEATS: 2\n:END:\n"
+           "* NEXT Second :incremental:\n"
+           ":PROPERTIES:\n:ID: review-second\n:A-FACTOR: 2\n"
+           ":NEW_INTERVAL: 4\n:TOTAL_REPEATS: 2\n:END:\n")))
+        (mock-now (encode-time '(0 0 12 28 9 2026 nil nil nil))))
+    (unwind-protect
+        (let ((org-incremental-directories (list file))
+              (org-incremental-todo-keywords "NEXT")
+              (org-incremental-current-queue nil)
+              (org-incremental-current-queue-position 0)
+              (org-incremental-session-buffer nil)
+              (org-incremental-save-buffers-after-writing-sessions-p nil))
+          (cl-letf (((symbol-function 'current-time) (lambda () mock-now)))
+            (save-window-excursion
+              (should (= (length (org-incremental)) 2))
+              (should (equal (org-get-heading t t t t) "First"))
+              (org-incremental-goto-next)
+              (should (= org-incremental-current-queue-position 1))
+              (should (equal (org-get-heading t t t t) "Second"))
+              (save-excursion
+                (save-restriction
+                  (widen)
+                  (goto-char (point-min))
+                  (re-search-forward "^\\* NEXT First ")
+                  (org-back-to-heading)
+                  (should (equal (org-entry-get (point) "TOTAL_REPEATS") "3"))
+                  (should (equal (org-entry-get (point) "OLD_INTERVAL") "4"))
+                  (should (equal (org-entry-get (point) "NEW_INTERVAL") "8"))
+                  (should (equal (org-entry-get (point) "LAST_REVIEWED")
+                                 "[2026-09-28 Mon]"))
+                  (should (equal (org-entry-get (point) "SCHEDULED")
+                                 "<2026-10-06 Tue>"))
+                  (re-search-forward "^\\* NEXT Second ")
+                  (org-back-to-heading)
+                  (should (equal (org-entry-get (point) "TOTAL_REPEATS") "2"))
+                  (should-not (org-entry-get (point) "LAST_REVIEWED"))))
+              (org-incremental-goto-next)
+              (should-not org-incremental-mode)
+              (should-not org-incremental-current-queue)
+              (should (= org-incremental-current-queue-position 0))
+              (save-excursion
+                (save-restriction
+                  (widen)
+                  (goto-char (point-min))
+                  (re-search-forward "^\\* NEXT Second ")
+                  (org-back-to-heading)
+                  (should (equal (org-entry-get (point) "TOTAL_REPEATS") "3"))
+                  (should (equal (org-entry-get (point) "OLD_INTERVAL") "4"))
+                  (should (equal (org-entry-get (point) "NEW_INTERVAL") "8"))
+                  (should (equal (org-entry-get (point) "LAST_REVIEWED")
+                                 "[2026-09-28 Mon]"))
+                  (should (equal (org-entry-get (point) "SCHEDULED")
+                                 "<2026-10-06 Tue>")))))))
+      (let ((buffer (find-buffer-visiting file)))
+        (when buffer
+          (with-current-buffer buffer (set-buffer-modified-p nil))
+          (kill-buffer buffer)))
+      (delete-file file))))
+
+(ert-deftest test-org-incremental-goto-next-review-error-preserves-session ()
+  "A failed review must not advance or end the active session."
+  (with-temp-buffer
+    (org-mode)
+    (let ((org-incremental-current-queue '(only))
+          (org-incremental-current-queue-position 0)
+          (org-incremental-session-buffer (current-buffer))
+          (org-incremental-save-buffers-after-writing-sessions-p nil)
+          move-called)
+      (org-incremental-mode 1)
+      (cl-letf (((symbol-function 'org-incremental-review-item)
+                 (lambda () (error "Review failed")))
+                ((symbol-function 'org-incremental--move-queue-position)
+                 (lambda (_delta) (setq move-called t))))
+        (should-error (org-incremental-goto-next) :type 'error)
+        (should-not move-called)
+        (should org-incremental-mode)
+        (should (equal org-incremental-current-queue '(only)))
         (should (= org-incremental-current-queue-position 0))))))
 
 (ert-deftest test-org-incremental-navigation-reopens-durable-entries ()
