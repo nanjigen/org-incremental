@@ -1849,10 +1849,38 @@ BUFFER and HEADER default to `org-incremental-buffer' and
 
 #+begin_src elisp :noweb-ref queue-views :results silent
 (defun org-incremental-view-outstanding ()
-  "Render the active session queue without recomputing it."
+  "Select and render the currently outstanding incremental entries.
+This does not replace or otherwise mutate the active session queue."
   (interactive)
-  (org-incremental-render-queue org-incremental-current-queue))
+  (org-incremental-render-queue (org-incremental-select-outstanding)))
 
+#+end_src
+
+#+begin_src elisp :noweb-ref tests :results silent
+(ert-deftest test-org-incremental-view-outstanding-selects-and-renders ()
+  "Render fresh outstanding entries when no session queue is active."
+  (let ((file (make-temp-file
+               "org-incremental-view-outstanding-" nil ".org"
+               (concat "#+TODO: NEXT | DONE\n"
+                       "* NEXT Visible :incremental:\n"
+                       "SCHEDULED: <2000-01-01>\n")))
+        display-arguments)
+    (unwind-protect
+        (let ((org-incremental-directories (list file))
+              (org-incremental-todo-keywords "NEXT")
+              (org-incremental-current-queue nil))
+          (cl-letf (((symbol-function 'org-ql-view--display)
+                     (lambda (&rest arguments)
+                       (setq display-arguments arguments))))
+            (org-incremental-view-outstanding)
+            (let ((strings (plist-get display-arguments :strings)))
+              (should (= (length strings) 1))
+              (should (string-match-p "Visible" (car strings))))
+            (should-not org-incremental-current-queue)
+            (should-not (find-buffer-visiting file))))
+      (let ((buffer (find-buffer-visiting file)))
+        (when buffer (kill-buffer buffer)))
+      (delete-file file))))
 #+end_src
 
 ** NEXT Start session function
