@@ -1183,8 +1183,10 @@ When nil, derive a query from `org-incremental-element-tag' and
   :group 'org-incremental)
 #+end_src
 
-In order to ease testing =org-ql-select= is put into its own function.
-Results are sorted by priority and date:
+In order to ease testing =org-ql-select= is put into its own function.  The
+org-ql adapter returns domain records; package-owned ordering then prioritizes
+higher-priority work, deadlines, scheduled dates, and deterministic source
+metadata.  This keeps session semantics independent from any browser sort:
 
 #+begin_src elisp :noweb-ref que-funcs :results silent
 (defun org-incremental--excluded-path-p (path)
@@ -1304,6 +1306,7 @@ and file-backed results retain no dependency on the source buffer."
                          (and-let* ((priority
                                      (org-entry-get (point) "PRIORITY")))
                            (string-to-char priority)))
+           :deadline (org-entry-get (point) "DEADLINE")
            :scheduled (org-entry-get (point) "SCHEDULED")
            :last-reviewed
            (org-entry-get (point) org-incremental-last-reviewed-property)
@@ -1438,6 +1441,7 @@ on repository fixtures or the user's Org configuration.
   "Select durable entries and clean buffers opened only for scanning."
   (let ((file (make-temp-file "org-incremental-test-" nil ".org"
                               (concat "* NEXT [#2] First :incremental:\n"
+                                      "DEADLINE: <2000-01-03 Mon> "
                                       "SCHEDULED: <2000-01-01 Sat>\n"
                                       ":PROPERTIES:\n:ID: existing-id\n"
                                       ":A-FACTOR: 2\n:OLD_INTERVAL: 2\n"
@@ -1463,6 +1467,8 @@ on repository fixtures or the user's Org configuration.
               (should (equal (org-incremental--element-tags first)
                              '("incremental")))
               (should (= (org-incremental--element-priority first) 2))
+              (should (equal (org-incremental--element-deadline first)
+                             "<2000-01-03 Mon>"))
               (should (equal (org-incremental--element-scheduled first)
                              "<2000-01-01 Sat>"))
               (should (equal (org-incremental--element-last-reviewed first)
@@ -1803,6 +1809,7 @@ The position is a zero-based index into the current queue.
   todo
   tags
   priority
+  deadline
   scheduled
   last-reviewed
   total-repeats
@@ -1941,6 +1948,100 @@ Where am I running the test for current-shift?
           (cons 'and (append eligibility
                              '((not (scheduled :from today))))))))
 
+(defun org-incremental--timestamp-date (timestamp)
+  "Return the ISO date portion of Org TIMESTAMP, or nil when absent.
+The returned YYYY-MM-DD string is suitable for chronological comparison."
+  (when (and (stringp timestamp)
+             (string-match
+              "[<[]\\([0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]\\)"
+              timestamp))
+    (match-string 1 timestamp)))
+
+(defun org-incremental--compare-optional (left right predicate)
+  "Compare optional LEFT and RIGHT using PREDICATE.
+Return -1 when LEFT sorts first, 1 when RIGHT sorts first, and 0 when equal.
+Present values always sort before missing values."
+  (cond ((equal left right) 0)
+        ((null left) 1)
+        ((null right) -1)
+        ((funcall predicate left right) -1)
+        (t 1)))
+
+(defun org-incremental--priority-rank (priority)
+  "Return a sortable rank for Org PRIORITY, or nil when it is absent.
+Org's lower numeric and character codes represent higher priorities."
+  (cond ((numberp priority) priority)
+        ((and (stringp priority) (= (length priority) 1))
+         (aref priority 0))
+        (t nil)))
+
+(defun org-incremental--queue-order-less-p (left right)
+  "Return non-nil when domain element LEFT belongs before RIGHT.
+Queue order is priority, deadline, scheduled date, title, source file,
+source position, then ID.  Present dates precede missing dates, and earlier
+dates precede later dates."
+  (let ((priority-order
+         (org-incremental--compare-optional
+          (org-incremental--priority-rank
+           (org-incremental--element-priority left))
+          (org-incremental--priority-rank
+           (org-incremental--element-priority right))
+          #'<))
+        (deadline-order
+         (org-incremental--compare-optional
+          (org-incremental--timestamp-date
+           (org-incremental--element-deadline left))
+          (org-incremental--timestamp-date
+           (org-incremental--element-deadline right))
+          #'string-lessp))
+        (scheduled-order
+         (org-incremental--compare-optional
+          (org-incremental--timestamp-date
+           (org-incremental--element-scheduled left))
+          (org-incremental--timestamp-date
+           (org-incremental--element-scheduled right))
+          #'string-lessp)))
+    (cond
+     ((/= priority-order 0) (< priority-order 0))
+     ((/= deadline-order 0) (< deadline-order 0))
+     ((/= scheduled-order 0) (< scheduled-order 0))
+     (t
+      (let* ((left-title (or (org-incremental--element-title left) ""))
+             (right-title (or (org-incremental--element-title right) ""))
+             (title-order
+              (org-incremental--compare-optional
+               (downcase left-title) (downcase right-title) #'string-lessp))
+             (exact-title-order
+              (org-incremental--compare-optional
+               left-title right-title #'string-lessp))
+             (file-order
+              (org-incremental--compare-optional
+               (org-incremental--element-file left)
+               (org-incremental--element-file right)
+               #'string-lessp))
+             (position-order
+              (org-incremental--compare-optional
+               (org-incremental--element-position left)
+               (org-incremental--element-position right)
+               #'<))
+             (id-order
+              (org-incremental--compare-optional
+               (org-incremental--element-id left)
+               (org-incremental--element-id right)
+               #'string-lessp)))
+        (cond ((/= title-order 0) (< title-order 0))
+              ((/= exact-title-order 0) (< exact-title-order 0))
+              ((/= file-order 0) (< file-order 0))
+              ((/= position-order 0) (< position-order 0))
+              ((/= id-order 0) (< id-order 0))
+              (t nil)))))))
+
+(defun org-incremental-order-queue (elements)
+  "Return a newly allocated list of ELEMENTS in package queue order.
+The input list is not mutated."
+  (cl-stable-sort (copy-sequence elements)
+                  #'org-incremental--queue-order-less-p))
+
 (defun org-incremental-elements (&optional sources query sort)
   "Return domain elements selected from configured Org SOURCES.
 QUERY defaults to all headings carrying `org-incremental-element-tag'.  SORT
@@ -1958,12 +2059,15 @@ records and need not know how source files were scanned."
 (defun org-incremental-outstanding-elements (&optional sources query sort)
   "Return outstanding domain elements selected from SOURCES.
 SOURCES defaults to `org-incremental-directories', QUERY defaults to
-`org-incremental-query', and SORT defaults to date then priority order.
-This function computes queue data without changing session state or UI."
-  (org-incremental-elements
-   sources
-   (or query org-incremental-query (org-incremental--default-query))
-   (or sort '(date priority))))
+`org-incremental-query'.  SORT, when non-nil, is passed only to the org-ql
+adapter for compatibility; final queue semantics are always established by
+`org-incremental-order-queue'.  This function computes queue data without
+changing session state or UI."
+  (org-incremental-order-queue
+   (org-incremental-elements
+    sources
+    (or query org-incremental-query (org-incremental--default-query))
+    sort)))
 
 (defun org-incremental-select-outstanding (&optional sources query sort)
   "Compatibility entry point for `org-incremental-outstanding-elements'."
@@ -1983,7 +2087,8 @@ This function computes queue data without changing session state or UI."
 #+begin_src elisp :noweb-ref tests :results silent
 (ert-deftest test-org-incremental-select-outstanding-is-pure ()
   "Selecting outstanding elements does not mutate active queue state."
-  (let ((org-incremental-current-queue '(active))
+  (let ((selected (org-incremental--make-element :title "Selected"))
+        (org-incremental-current-queue '(active))
         (org-incremental-directories '("configured.org"))
         (org-incremental-query '(tags "incremental"))
         captured)
@@ -1992,12 +2097,67 @@ This function computes queue data without changing session state or UI."
               ((symbol-function 'org-incremental-selection)
                (lambda (sources query sort)
                  (setq captured (list sources query sort))
-                 '(selected))))
-      (should (equal (org-incremental-outstanding-elements) '(selected)))
-      (should (equal (org-incremental-select-outstanding) '(selected)))
+                 (list selected))))
+      (should (equal (org-incremental-outstanding-elements) (list selected)))
+      (should (equal (org-incremental-select-outstanding) (list selected)))
       (should (equal captured
-                     '(("normalized.org") (tags "incremental") (date priority))))
+                     '(("normalized.org") (tags "incremental") nil)))
       (should (equal org-incremental-current-queue '(active))))))
+
+(ert-deftest test-org-incremental-queue-order-priority-dominates ()
+  "Higher priority sorts first regardless of date metadata."
+  (let ((high (org-incremental--make-element
+               :title "High" :priority 1 :scheduled "<2999-01-01>"))
+        (low (org-incremental--make-element
+              :title "Low" :priority 4 :deadline "<2000-01-01>")))
+    (should (equal (org-incremental-order-queue (list low high))
+                   (list high low)))))
+
+(ert-deftest test-org-incremental-queue-order-deadlines ()
+  "Present and earlier deadlines lead within equal priority."
+  (let ((early (org-incremental--make-element
+                :title "Early" :priority 2 :deadline "<2026-09-28 Mon>"))
+        (later (org-incremental--make-element
+                :title "Later" :priority 2 :deadline "<2026-09-30 Wed>"))
+        (none (org-incremental--make-element
+              :title "None" :priority 2 :scheduled "<2000-01-01 Sat>")))
+    (should (equal (org-incremental-order-queue (list none later early))
+                   (list early later none)))))
+
+(ert-deftest test-org-incremental-queue-order-scheduled-dates ()
+  "Present and earlier scheduled dates lead when deadlines are absent."
+  (let ((early (org-incremental--make-element
+                :title "Early" :priority 3 :scheduled "<2026-09-28 Mon>"))
+        (later (org-incremental--make-element
+                :title "Later" :priority 3 :scheduled "<2026-09-30 Wed>"))
+        (none (org-incremental--make-element
+              :title "None" :priority 3)))
+    (should (equal (org-incremental-order-queue (list none later early))
+                   (list early later none)))))
+
+(ert-deftest test-org-incremental-queue-order-missing-dates-last ()
+  "An undated element follows a dated peer at the same priority."
+  (let ((dated (org-incremental--make-element
+                :title "Zulu" :priority ?B :deadline "<2026-09-29 Tue>"))
+        (undated (org-incremental--make-element
+                  :title "Alpha" :priority ?B)))
+    (should (equal (org-incremental-order-queue (list undated dated))
+                   (list dated undated)))))
+
+(ert-deftest test-org-incremental-queue-order-deterministic-fallback ()
+  "Title and source location provide deterministic final ordering."
+  (let ((beta (org-incremental--make-element
+               :title "Beta" :priority 2 :file "/tmp/b.org" :position 20))
+        (alpha-later (org-incremental--make-element
+                      :title "Alpha" :priority 2
+                      :file "/tmp/a.org" :position 30))
+        (alpha-earlier (org-incremental--make-element
+                        :title "Alpha" :priority 2
+                        :file "/tmp/a.org" :position 10)))
+    (should (equal
+             (org-incremental-order-queue
+              (list beta alpha-later alpha-earlier))
+             (list alpha-earlier alpha-later beta)))))
 
 (ert-deftest test-org-incremental-refresh-queue-stores-selection ()
   "Refreshing stores selected elements and resets the queue position."
