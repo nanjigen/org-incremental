@@ -3502,6 +3502,11 @@ the model/query API.  It does not parse org-ql results, inspect org-element
 plists, or depend on live source markers.  Org files remain canonical and are
 opened normally only when the user visits or reviews a selected row.
 
+The browser exposes its dispatcher on both =?= and =C-c ?=.  The latter is the
+portable binding for modal configurations: Evil normal state intentionally
+retains =?= for backward search rather than org-incremental installing an
+overriding map.
+
 #+begin_src elisp :noweb-ref browser :results silent
 (defcustom org-incremental-list-buffer "*org-incremental: Elements*"
   "Buffer name used by the package-owned element browser."
@@ -3530,7 +3535,8 @@ opened normally only when the user visits or reviews a selected row.
   "Return PRIORITY display text using Org's native priority face."
   (let ((text (org-incremental--display-priority priority))
         (rank (org-incremental--priority-rank priority)))
-    (propertize text 'face (if rank (org-get-priority-face rank) 'shadow))))
+    (propertize text 'font-lock-face
+                (if rank (org-get-priority-face rank) 'shadow))))
 
 (defun org-incremental--date-face (timestamp kind)
   "Return an Org face for TIMESTAMP of KIND.
@@ -3548,12 +3554,12 @@ KIND is either `deadline' or `scheduled'."
 (defun org-incremental--display-dated-field (timestamp kind)
   "Format Org TIMESTAMP and apply its semantic KIND face."
   (let ((text (org-incremental--display-date timestamp)))
-    (propertize text 'face (or (org-incremental--date-face timestamp kind)
-                               'shadow))))
+    (propertize text 'font-lock-face
+                (or (org-incremental--date-face timestamp kind) 'shadow))))
 
 (defun org-incremental--display-metadata (value)
   "Return VALUE as subdued browser metadata."
-  (propertize (format "%s" (or value 0)) 'face 'shadow))
+  (propertize (format "%s" (or value 0)) 'font-lock-face 'shadow))
 
 (defun org-incremental--reviewed-today-p (element)
   "Return non-nil when ELEMENT was last reviewed today."
@@ -3603,7 +3609,7 @@ KIND is either `deadline' or `scheduled'."
                    (org-incremental--element-last-reviewed element))
          :formatter (lambda (timestamp)
                       (propertize (org-incremental--display-date timestamp)
-                                  'face 'shadow)))
+                                  'font-lock-face 'shadow)))
    (list :name "Deadline" :width 10
          :getter (lambda (element _table)
                    (org-incremental--element-deadline element))
@@ -3665,7 +3671,10 @@ KIND is either `deadline' or `scheduled'."
   "n" #'org-incremental-list-next
   "p" #'org-incremental-list-previous
   "r" #'org-incremental-list-review
-  "?" #'org-incremental-dispatch)
+  "?" #'org-incremental-dispatch
+  ;; Evil normal state intentionally retains `?' for backward search;
+  ;; `C-c ?' is the mode-specific fallback not claimed by Evil defaults.
+  "C-c ?" #'org-incremental-dispatch)
 
 (define-derived-mode org-incremental-list-mode magit-section-mode
   "Org-Incremental"
@@ -3836,26 +3845,54 @@ KIND is either `deadline' or `scheduled'."
         (should (equal (vtable-objects org-incremental-list--table)
                        model-order))))))
 
-(ert-deftest test-org-incremental-list-uses-native-semantic-faces ()
-  "Browser formatting uses theme-aware Org and Emacs faces."
+(ert-deftest test-org-incremental-list-semantic-faces-survive-fontification ()
+  "Browser cells retain theme-aware semantic faces after fontification."
   (cl-letf (((symbol-function 'current-time)
              (lambda () (encode-time 0 0 12 29 9 2026))))
     (should (eq (get-text-property
-                 0 'face (org-incremental--display-priority-with-face 1))
+                 0 'font-lock-face
+                 (org-incremental--display-priority-with-face 1))
                 'org-priority))
     (should (eq (get-text-property
-                 0 'face
+                 0 'font-lock-face
                  (org-incremental--display-dated-field
                   "<2026-09-28 Mon>" 'deadline))
                 'org-warning))
     (should (eq (get-text-property
-                 0 'face
+                 0 'font-lock-face
                  (org-incremental--display-dated-field
                   "<2026-09-29 Tue>" 'scheduled))
                 'org-scheduled-today))
     (should (eq (get-text-property
-                 0 'face (org-incremental--display-metadata 3))
-                'shadow))))
+                 0 'font-lock-face (org-incremental--display-metadata 3))
+                'shadow))
+    (with-temp-buffer
+      (org-incremental-list-mode)
+      (setq org-incremental-list--elements
+            (list (org-incremental--make-element
+                   :title "Styled" :priority 1 :total-repeats 3
+                   :new-interval 8 :last-reviewed "[2026-09-27 Sun]"
+                   :deadline "<2026-09-28 Mon>"
+                   :scheduled "<2026-09-29 Tue>")))
+      (org-incremental-list--render)
+      (font-lock-ensure (point-min) (point-max))
+      (should (text-property-any (point-min) (point-max)
+                                 'font-lock-face 'org-priority))
+      (should (text-property-any (point-min) (point-max)
+                                 'font-lock-face 'org-warning))
+      (should (text-property-any (point-min) (point-max)
+                                 'font-lock-face 'org-scheduled-today))
+      (should (text-property-any (point-min) (point-max)
+                                 'font-lock-face 'shadow)))))
+
+(ert-deftest test-org-incremental-list-effective-command-bindings ()
+  "Browser exposes its dispatch through effective vanilla bindings."
+  (with-temp-buffer
+    (org-incremental-list-mode)
+    (should (eq (key-binding (kbd "?"))
+                #'org-incremental-dispatch))
+    (should (eq (key-binding (kbd "C-c ?"))
+                #'org-incremental-dispatch))))
 
 (ert-deftest test-org-incremental-mode-line-session-state ()
   "Session mode-line text follows queue position and disappears on end."
