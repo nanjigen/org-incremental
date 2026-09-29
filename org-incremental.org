@@ -3509,7 +3509,9 @@ overriding map.
 
 Only the embedded vtable uses =fixed-pitch=.  The surrounding Magit sections
 retain the user's normal UI font, while all table columns share one stable font
-metric across fontification and redisplay.
+metric across fontification and redisplay.  The Title column receives a
+responsive share of the window and a practical minimum width; compact metadata
+and date columns remain fixed.
 
 #+begin_src elisp :noweb-ref browser :results silent
 (defcustom org-incremental-list-buffer "*org-incremental: Elements*"
@@ -3597,7 +3599,7 @@ KIND is either `deadline' or `scheduled'."
          :getter (lambda (element _table)
                    (org-incremental--element-priority element))
          :formatter #'org-incremental--display-priority-with-face)
-   (list :name "Title" :width 24
+   (list :name "Title" :width "40%" :min-width 24
          :getter (lambda (element _table)
                    (or (org-incremental--element-title element) "")))
    (list :name "Reps" :width 5 :align 'right
@@ -3793,6 +3795,10 @@ KIND is either `deadline' or `scheduled'."
             (with-current-buffer org-incremental-list-buffer
               (should (derived-mode-p 'org-incremental-list-mode))
               (should (object-of-class-p org-incremental-list--table 'vtable))
+              (let ((columns (vtable-columns org-incremental-list--table)))
+                (should (equal (mapcar #'vtable-column-width columns)
+                               '(4 "40%" 5 8 10 10 10)))
+                (should (= (vtable-column-min-width (nth 1 columns)) 24)))
               (should (= (length (vtable-objects
                                   org-incremental-list--table)) 2))
               (should (equal (vtable-objects org-incremental-list--table)
