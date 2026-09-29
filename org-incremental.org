@@ -1820,6 +1820,16 @@ The position is a zero-based index into the current queue.
   ;; package-owned browser must not consume this private org-ql snapshot.
   display-string)
 
+(cl-defstruct (org-incremental-review-snapshot
+               (:constructor org-incremental--make-review-snapshot)
+               (:conc-name org-incremental--review-snapshot-))
+  "Exact scheduling state captured before one successful review."
+  element
+  properties
+  scheduled
+  queue
+  queue-position)
+
 (defvar org-incremental-current-queue nil
   "Domain elements in the active incremental session.")
 
@@ -1828,6 +1838,11 @@ The position is a zero-based index into the current queue.
 
 (defvar org-incremental-session-buffer nil
   "Buffer currently displaying the active session element.")
+
+(defvar org-incremental-session-review-history nil
+  "Most-recent-first snapshots of reviews made since the last session start.
+The history remains available after automatic session termination so that the
+final review can still be undone.  Starting a new session clears it.")
 
 #+end_src
 
@@ -2398,6 +2413,11 @@ This does not replace or otherwise mutate the active session queue."
 The public `org-incremental' command owns the session lifecycle.  Queue
 selection, rendering, and element visiting remain separate operations.
 
+Successful reviews also create package-level undo snapshots.  These snapshots
+contain only scheduling state, not arbitrary heading text, and form a LIFO
+history for the current session.  The history survives session termination so
+the final review remains reversible, then resets when a new session starts.
+
 #+begin_src elisp :noweb-ref start-session :results silent
 (defun org-incremental-current-element ()
   "Return the durable entry at the active queue position, or nil."
@@ -2471,8 +2491,59 @@ hooks, and user configuration to run for the selected item."
     (org-fold-show-context 'agenda)
     element))
 
+(defun org-incremental--review-property-names ()
+  "Return all property names whose review state must be reversible."
+  (cl-delete-duplicates
+   (delq nil
+         (append (list org-incremental-a-factor-property)
+                 org-incremental--a-factor-property-aliases
+                 (list org-incremental-old-interval-property
+                       org-incremental-new-interval-property
+                       org-incremental-total-repeats-property
+                       org-incremental-last-reviewed-property)))
+   :test #'equal))
+
+(defun org-incremental--capture-review-snapshot (element)
+  "Capture the scheduling state at point before reviewing ELEMENT."
+  (let ((session-review-p
+         (and org-incremental-current-queue
+              (eq element (org-incremental-current-element)))))
+    (org-incremental--make-review-snapshot
+     :element element
+     :properties
+     (mapcar (lambda (property)
+               (cons property (org-entry-get (point) property nil)))
+             (org-incremental--review-property-names))
+     :scheduled (org-entry-get (point) "SCHEDULED" nil)
+     :queue (and session-review-p
+                 (copy-sequence org-incremental-current-queue))
+     :queue-position (and session-review-p
+                          org-incremental-current-queue-position))))
+
+(defun org-incremental--restore-review-snapshot (snapshot)
+  "Restore Org scheduling data from review SNAPSHOT and return fresh element."
+  (let* ((element (org-incremental--review-snapshot-element snapshot))
+         (marker (org-incremental--element-marker element)))
+    (with-current-buffer (marker-buffer marker)
+      (save-excursion
+        (save-restriction
+          (widen)
+          (goto-char marker)
+          (org-back-to-heading t)
+          (atomic-change-group
+            (dolist (property
+                     (org-incremental--review-snapshot-properties snapshot))
+              (if (cdr property)
+                  (org-entry-put (point) (car property) (cdr property))
+                (org-entry-delete (point) (car property))))
+            (if-let* ((scheduled
+                       (org-incremental--review-snapshot-scheduled snapshot)))
+                (org-schedule nil scheduled)
+              (org-schedule '(4))))
+          (org-incremental--element-from-org (point-marker)))))))
+
 (defun org-incremental-element-review (element)
-  "Review domain ELEMENT in its canonical Org source and return fresh state."
+  "Review domain ELEMENT, record an undo snapshot, and return fresh state."
   (let ((marker (org-incremental--element-marker element)))
     (with-current-buffer (marker-buffer marker)
       (save-excursion
@@ -2480,8 +2551,44 @@ hooks, and user configuration to run for the selected item."
           (widen)
           (goto-char marker)
           (org-back-to-heading t)
-          (org-incremental-review-item)
-          (org-incremental--element-from-org (point-marker)))))))
+          (let ((snapshot (org-incremental--capture-review-snapshot element))
+                reviewed)
+            (atomic-change-group
+              (org-incremental-review-item)
+              (setq reviewed
+                    (org-incremental--element-from-org (point-marker))))
+            ;; Failed reviews leave neither partial Org mutations nor phantom
+            ;; history entries.
+            (push snapshot org-incremental-session-review-history)
+            reviewed))))))
+
+(defun org-incremental-undo-last-review ()
+  "Undo the most recent package review mutation.
+Restore exactly the scheduling properties and SCHEDULED timestamp captured
+before that review.  For a session review, restore the prior queue position
+and revisit the restored element, including after final-item termination."
+  (interactive)
+  (unless org-incremental-session-review-history
+    (user-error "No org-incremental review to undo"))
+  (let* ((snapshot (car org-incremental-session-review-history))
+         (restored (org-incremental--restore-review-snapshot snapshot))
+         (queue (org-incremental--review-snapshot-queue snapshot))
+         (position (org-incremental--review-snapshot-queue-position snapshot)))
+    ;; Pop only after restoration succeeds, so a recoverable error does not
+    ;; destroy the user's sole route back to the captured state.
+    (setq org-incremental-session-review-history
+          (cdr org-incremental-session-review-history))
+    (if queue
+        (progn
+          (setq org-incremental-current-queue (copy-sequence queue)
+                org-incremental-current-queue-position position)
+          (setf (nth position org-incremental-current-queue) restored)
+          (org-incremental--visit-element restored))
+      (when (derived-mode-p 'org-incremental-list-mode)
+        (org-incremental-list-refresh)))
+    (force-mode-line-update t)
+    (message "Undid review of %s" (org-incremental--element-title restored))
+    restored))
 
 (defun org-incremental--visit-element (element)
   "Visit durable queue ELEMENT and mark its buffer as the session buffer."
@@ -2532,6 +2639,7 @@ modified buffers before ending the session."
   (interactive)
   (when (or org-incremental-mode org-incremental-current-queue)
     (user-error "An org-incremental session is already active"))
+  (setq org-incremental-session-review-history nil)
   (if (org-incremental-refresh-queue)
       (progn
         (org-incremental--visit-current-element)
@@ -2553,7 +2661,8 @@ modified buffers before ending the session."
     (let ((first (org-incremental--make-element :title "First"))
           (second (org-incremental--make-element :title "Second"))
           (org-incremental-current-queue nil)
-          (org-incremental-current-queue-position 9))
+          (org-incremental-current-queue-position 9)
+          (org-incremental-session-review-history '(stale)))
       (cl-letf (((symbol-function 'org-incremental-refresh-queue)
                  (lambda ()
                    (setq org-incremental-current-queue (list first second)
@@ -2563,6 +2672,7 @@ modified buffers before ending the session."
         (should (equal (org-incremental) (list first second)))
         (should (cl-every #'org-incremental-element-p
                           org-incremental-current-queue))
+        (should-not org-incremental-session-review-history)
         (should org-incremental-mode)
         (should (= org-incremental-current-queue-position 0))))))
 
@@ -2741,6 +2851,7 @@ Go back to recently completed via the =org-incremental-view-recent= function
               (org-incremental-current-queue nil)
               (org-incremental-current-queue-position 0)
               (org-incremental-session-buffer nil)
+              (org-incremental-session-review-history nil)
               (org-incremental-save-buffers-after-writing-sessions-p nil))
           (cl-letf (((symbol-function 'current-time) (lambda () mock-now)))
             (save-window-excursion
@@ -2809,6 +2920,140 @@ Go back to recently completed via the =org-incremental-view-recent= function
         (should (equal org-incremental-current-queue '(only)))
         (should (= org-incremental-current-queue-position 0))))))
 
+(ert-deftest test-org-incremental-undo-final-session-review ()
+  "Undo restores exact state and reopens a session after its final review."
+  (let ((file
+         (make-temp-file
+          "org-incremental-undo-final-" nil ".org"
+          (concat
+           "#+TODO: NEXT | DONE\n"
+           "* NEXT Historical :incremental:\n"
+           "SCHEDULED: <2026-09-20 Sun>\n"
+           ":PROPERTIES:\n:A-FACTOR: 2\n:OLD_INTERVAL: 3\n"
+           ":NEW_INTERVAL: 4\n:TOTAL_REPEATS: 2\n"
+           ":LAST_REVIEWED: [2026-09-20 Sun]\n:END:\n")))
+        (mock-now (encode-time '(0 0 12 28 9 2026 nil nil nil))))
+    (unwind-protect
+        (let ((org-incremental-directories (list file))
+              (org-incremental-todo-keywords "NEXT")
+              (org-incremental-current-queue nil)
+              (org-incremental-current-queue-position 0)
+              (org-incremental-session-buffer nil)
+              (org-incremental-session-review-history '(stale))
+              (org-incremental-save-buffers-after-writing-sessions-p nil))
+          (cl-letf (((symbol-function 'current-time) (lambda () mock-now)))
+            (save-window-excursion
+              (should (= (length (org-incremental)) 1))
+              (should-not org-incremental-session-review-history)
+              (org-incremental-goto-next)
+              (should-not org-incremental-current-queue)
+              (should (= (length org-incremental-session-review-history) 1))
+              (org-incremental-undo-last-review)
+              (should org-incremental-mode)
+              (should (= org-incremental-current-queue-position 0))
+              (should (= (length org-incremental-current-queue) 1))
+              (should (equal (org-get-heading t t t t) "Historical"))
+              (should (equal (org-entry-get (point) "SCHEDULED")
+                             "<2026-09-20 Sun>"))
+              (should (equal (org-entry-get (point) "A-FACTOR") "2"))
+              (should-not (org-entry-get (point) "A_FACTOR"))
+              (should (equal (org-entry-get (point) "OLD_INTERVAL") "3"))
+              (should (equal (org-entry-get (point) "NEW_INTERVAL") "4"))
+              (should (equal (org-entry-get (point) "TOTAL_REPEATS") "2"))
+              (should (equal (org-entry-get (point) "LAST_REVIEWED")
+                             "[2026-09-20 Sun]"))
+              (should-not org-incremental-session-review-history)
+              (org-incremental-end-session))))
+      (let ((buffer (find-buffer-visiting file)))
+        (when buffer
+          (with-current-buffer buffer (set-buffer-modified-p nil))
+          (kill-buffer buffer)))
+      (delete-file file))))
+
+(ert-deftest test-org-incremental-undo-removes-review-created-state ()
+  "Undo removes properties and scheduling that were absent before review."
+  (with-temp-buffer
+    (org-mode)
+    (insert "* NEXT New :incremental:\n"
+            ":PROPERTIES:\n:A_FACTOR: 2\n:NEW_INTERVAL: 4\n"
+            ":TOTAL_REPEATS: 2\n:END:\n")
+    (goto-char (point-min))
+    (let ((element (org-incremental--element-from-org (point-marker)))
+          (org-incremental-current-queue nil)
+          (org-incremental-session-review-history nil)
+          (mock-now (encode-time '(0 0 12 28 9 2026 nil nil nil))))
+      (cl-letf (((symbol-function 'current-time) (lambda () mock-now)))
+        (org-incremental-element-review element)
+        (should (org-entry-get (point) "OLD_INTERVAL"))
+        (should (org-entry-get (point) "LAST_REVIEWED"))
+        (should (org-entry-get (point) "SCHEDULED"))
+        (org-incremental-undo-last-review)
+        (should-not (org-entry-get (point) "OLD_INTERVAL"))
+        (should-not (org-entry-get (point) "LAST_REVIEWED"))
+        (should-not (org-entry-get (point) "SCHEDULED"))
+        (should (equal (org-entry-get (point) "NEW_INTERVAL") "4"))
+        (should (equal (org-entry-get (point) "TOTAL_REPEATS") "2"))))))
+
+(ert-deftest test-org-incremental-failed-review-has-no-undo-entry ()
+  "A failed review is rolled back and does not create an undo snapshot."
+  (with-temp-buffer
+    (org-mode)
+    (insert "* NEXT Failure :incremental:\n"
+            ":PROPERTIES:\n:A_FACTOR: 2\n:NEW_INTERVAL: 4\n"
+            ":TOTAL_REPEATS: 2\n:END:\n")
+    (goto-char (point-min))
+    (let ((element (org-incremental--element-from-org (point-marker)))
+          (org-incremental-current-queue nil)
+          (org-incremental-session-review-history nil))
+      (cl-letf (((symbol-function 'org-incremental-review-item)
+                 (lambda ()
+                   (org-entry-put (point) "NEW_INTERVAL" "99")
+                   (error "Review failed"))))
+        (should-error (org-incremental-element-review element) :type 'error)
+        (should (equal (org-entry-get (point) "NEW_INTERVAL") "4"))
+        (should-not org-incremental-session-review-history)))))
+
+(ert-deftest test-org-incremental-review-history-is-lifo ()
+  "Repeated undo restores successful reviews in reverse order."
+  (with-temp-buffer
+    (org-mode)
+    (insert "#+TODO: NEXT | DONE\n"
+            "* NEXT First :incremental:\n"
+            ":PROPERTIES:\n:A_FACTOR: 2\n:NEW_INTERVAL: 4\n"
+            ":TOTAL_REPEATS: 2\n:END:\n"
+            "* NEXT Second :incremental:\n"
+            ":PROPERTIES:\n:A_FACTOR: 2\n:NEW_INTERVAL: 4\n"
+            ":TOTAL_REPEATS: 2\n:END:\n")
+    (let ((org-incremental-current-queue nil)
+          (org-incremental-session-review-history nil)
+          (mock-now (encode-time '(0 0 12 28 9 2026 nil nil nil)))
+          first second)
+      (goto-char (point-min))
+      (re-search-forward "^\\* NEXT First")
+      (org-back-to-heading)
+      (setq first (org-incremental--element-from-org (point-marker)))
+      (re-search-forward "^\\* NEXT Second")
+      (org-back-to-heading)
+      (setq second (org-incremental--element-from-org (point-marker)))
+      (cl-letf (((symbol-function 'current-time) (lambda () mock-now)))
+        (org-incremental-element-review first)
+        (org-incremental-element-review second)
+        (should (= (length org-incremental-session-review-history) 2))
+        (org-incremental-undo-last-review)
+        (goto-char (point-min))
+        (re-search-forward "^\\* NEXT First")
+        (org-back-to-heading)
+        (should (equal (org-entry-get (point) "TOTAL_REPEATS") "3"))
+        (re-search-forward "^\\* NEXT Second")
+        (org-back-to-heading)
+        (should (equal (org-entry-get (point) "TOTAL_REPEATS") "2"))
+        (org-incremental-undo-last-review)
+        (goto-char (point-min))
+        (re-search-forward "^\\* NEXT First")
+        (org-back-to-heading)
+        (should (equal (org-entry-get (point) "TOTAL_REPEATS") "2"))
+        (should-not org-incremental-session-review-history)))))
+
 (ert-deftest test-org-incremental-navigation-reopens-durable-entries ()
   "Navigation reopens only the selected durable entry after scan cleanup."
   (let ((file (make-temp-file
@@ -2823,6 +3068,7 @@ Go back to recently completed via the =org-incremental-view-recent= function
                (org-incremental-current-queue queue)
                (org-incremental-current-queue-position 0)
                (org-incremental-session-buffer nil)
+               (org-incremental-session-review-history nil)
                (org-incremental-save-buffers-after-writing-sessions-p nil)
                (normal-find-file-noselect
                 (symbol-function 'find-file-noselect))
@@ -3693,6 +3939,7 @@ KIND is either `deadline' or `scheduled'."
   "n" #'org-incremental-list-next
   "p" #'org-incremental-list-previous
   "r" #'org-incremental-list-review
+  "u" #'org-incremental-undo-last-review
   "?" #'org-incremental-dispatch
   ;; Portable fallback before or without the optional Evil state bindings.
   "C-c ?" #'org-incremental-dispatch)
@@ -3712,6 +3959,7 @@ global Evil state map."
     (kbd "k") #'org-incremental-list-previous
     (kbd "RET") #'org-incremental-list-visit
     (kbd "r") #'org-incremental-list-review
+    (kbd "u") #'org-incremental-undo-last-review
     (kbd "?") #'org-incremental-dispatch
     (kbd "g r") #'org-incremental-list-refresh
     (kbd "g g") #'org-incremental-list-first
@@ -3809,6 +4057,7 @@ global Evil state map."
     ("s" "Start" org-incremental)
     ("n" "Review and next" org-incremental-goto-next)
     ("p" "Previous" org-incremental-goto-previous)
+    ("u" "Undo last review" org-incremental-undo-last-review)
     ("e" "End" org-incremental-end-session)]
    ["Item"
     ("r" "Review selected" org-incremental-list-review)]
@@ -3978,8 +4227,16 @@ global Evil state map."
     (org-incremental-list-mode)
     (should (eq (key-binding (kbd "?"))
                 #'org-incremental-dispatch))
+    (should (eq (key-binding (kbd "u"))
+                #'org-incremental-undo-last-review))
     (should (eq (key-binding (kbd "C-c ?"))
                 #'org-incremental-dispatch))))
+
+(ert-deftest test-org-incremental-transient-exposes-review-undo ()
+  "The dispatcher exposes package-level review undo on `u'."
+  (let ((suffix (transient-get-suffix 'org-incremental-dispatch "u")))
+    (should (eq (plist-get (cdr suffix) :command)
+                #'org-incremental-undo-last-review))))
 
 (ert-deftest test-org-incremental-list-boundary-navigation ()
   "First and last commands move to the visual boundary rows."
@@ -4021,6 +4278,7 @@ global Evil state map."
                        ("k" . ,#'org-incremental-list-previous)
                        ("?" . ,#'org-incremental-dispatch)
                        ("r" . ,#'org-incremental-list-review)
+                       ("u" . ,#'org-incremental-undo-last-review)
                        ("RET" . ,#'org-incremental-list-visit)
                        ("g r" . ,#'org-incremental-list-refresh)
                        ("g g" . ,#'org-incremental-list-first)
