@@ -3507,6 +3507,10 @@ portable binding for modal configurations: Evil normal state intentionally
 retains =?= for backward search rather than org-incremental installing an
 overriding map.
 
+Only the embedded vtable uses =fixed-pitch=.  The surrounding Magit sections
+retain the user's normal UI font, while all table columns share one stable font
+metric across fontification and redisplay.
+
 #+begin_src elisp :noweb-ref browser :results silent
 (defcustom org-incremental-list-buffer "*org-incremental: Elements*"
   "Buffer name used by the package-owned element browser."
@@ -3707,6 +3711,9 @@ KIND is either `deadline' or `scheduled'."
                :columns (org-incremental-list--columns)
                :objects org-incremental-list--elements
                :use-header-line nil
+               ;; Dense tabular data needs one stable metric even when the
+               ;; surrounding Magit UI or `vtable' defaults to variable pitch.
+               :face 'fixed-pitch
                :actions (list "RET" #'org-incremental-list-visit
                               "r" #'org-incremental-list-review)
                :separator-width 1))))
@@ -3869,13 +3876,25 @@ KIND is either `deadline' or `scheduled'."
     (with-temp-buffer
       (org-incremental-list-mode)
       (setq org-incremental-list--elements
-            (list (org-incremental--make-element
-                   :title "Styled" :priority 1 :total-repeats 3
-                   :new-interval 8 :last-reviewed "[2026-09-27 Sun]"
-                   :deadline "<2026-09-28 Mon>"
-                   :scheduled "<2026-09-29 Tue>")))
+            (list
+             (org-incremental--make-element
+              :title "Short" :priority 1 :total-repeats 3
+              :new-interval 8 :last-reviewed "[2026-09-27 Sun]"
+              :deadline "<2026-09-28 Mon>"
+              :scheduled "<2026-09-29 Tue>")
+             (org-incremental--make-element
+              :title "A substantially longer title" :priority 4
+              :total-repeats 27 :new-interval 144
+              :deadline "<2026-10-08 Thu>"
+              :scheduled "<2026-10-01 Thu>")
+             (org-incremental--make-element
+              :title "Undated" :priority ?C :total-repeats 0
+              :new-interval 1)))
       (org-incremental-list--render)
+      (should (eq (vtable-face org-incremental-list--table) 'fixed-pitch))
+      (font-lock-flush (point-min) (point-max))
       (font-lock-ensure (point-min) (point-max))
+      (should (eq (vtable-face org-incremental-list--table) 'fixed-pitch))
       (should (text-property-any (point-min) (point-max)
                                  'font-lock-face 'org-priority))
       (should (text-property-any (point-min) (point-max)
@@ -3884,6 +3903,21 @@ KIND is either `deadline' or `scheduled'."
                                  'font-lock-face 'org-scheduled-today))
       (should (text-property-any (point-min) (point-max)
                                  'font-lock-face 'shadow)))))
+
+(ert-deftest test-org-incremental-list-formatters-leave-layout-to-vtable ()
+  "Semantic formatter output carries no width-changing display properties."
+  (let ((samples
+         (list (org-incremental--display-priority-with-face 1)
+               (org-incremental--display-dated-field
+                "<2026-09-28 Mon>" 'deadline)
+               (org-incremental--display-dated-field
+                "<2026-09-29 Tue>" 'scheduled)
+               (org-incremental--display-metadata 144))))
+    (dolist (sample samples)
+      (should (get-text-property 0 'font-lock-face sample))
+      (dolist (property '(display composition line-prefix wrap-prefix raise))
+        (should-not (text-property-not-all
+                     0 (length sample) property nil sample))))))
 
 (ert-deftest test-org-incremental-list-effective-command-bindings ()
   "Browser exposes its dispatch through effective vanilla bindings."
