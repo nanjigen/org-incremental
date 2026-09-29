@@ -3516,11 +3516,7 @@ opened normally only when the user visits or reviews a selected row.
 
 (defun org-incremental--display-date (timestamp)
   "Return date-only display text for Org TIMESTAMP."
-  (if (and timestamp
-           (string-match "[<[]\\([0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]\\)"
-                         timestamp))
-      (match-string 1 timestamp)
-    "—"))
+  (or (org-incremental--timestamp-date timestamp) "—"))
 
 (defun org-incremental--display-priority (priority)
   "Return compact display text for PRIORITY."
@@ -3529,6 +3525,35 @@ opened normally only when the user visits or reviews a selected row.
          (number-to-string priority))
         ((characterp priority) (char-to-string priority))
         (t (format "%s" priority))))
+
+(defun org-incremental--display-priority-with-face (priority)
+  "Return PRIORITY display text using Org's native priority face."
+  (let ((text (org-incremental--display-priority priority))
+        (rank (org-incremental--priority-rank priority)))
+    (propertize text 'face (if rank (org-get-priority-face rank) 'shadow))))
+
+(defun org-incremental--date-face (timestamp kind)
+  "Return an Org face for TIMESTAMP of KIND.
+KIND is either `deadline' or `scheduled'."
+  (when-let* ((date (org-incremental--timestamp-date timestamp)))
+    (let ((today (format-time-string "%Y-%m-%d")))
+      (cond ((string-lessp date today)
+             (if (eq kind 'deadline)
+                 'org-warning
+               'org-scheduled-previously))
+            ((equal date today) 'org-scheduled-today)
+            ((eq kind 'deadline) 'org-upcoming-deadline)
+            (t 'org-scheduled)))))
+
+(defun org-incremental--display-dated-field (timestamp kind)
+  "Format Org TIMESTAMP and apply its semantic KIND face."
+  (let ((text (org-incremental--display-date timestamp)))
+    (propertize text 'face (or (org-incremental--date-face timestamp kind)
+                               'shadow))))
+
+(defun org-incremental--display-metadata (value)
+  "Return VALUE as subdued browser metadata."
+  (propertize (format "%s" (or value 0)) 'face 'shadow))
 
 (defun org-incremental--reviewed-today-p (element)
   "Return non-nil when ELEMENT was last reviewed today."
@@ -3560,25 +3585,37 @@ opened normally only when the user visits or reviews a selected row.
   (list
    (list :name "Pri" :width 4
          :getter (lambda (element _table)
-                   (org-incremental--display-priority
-                    (org-incremental--element-priority element))))
-   (list :name "Title" :width 38 :primary 'ascend
+                   (org-incremental--element-priority element))
+         :formatter #'org-incremental--display-priority-with-face)
+   (list :name "Title" :width 24
          :getter (lambda (element _table)
                    (or (org-incremental--element-title element) "")))
-   (list :name "Reps" :width 6 :align 'right
+   (list :name "Reps" :width 5 :align 'right
          :getter (lambda (element _table)
-                   (org-incremental--element-total-repeats element)))
-   (list :name "Interval" :width 9 :align 'right
+                   (or (org-incremental--element-total-repeats element) 0))
+         :formatter #'org-incremental--display-metadata)
+   (list :name "Interval" :width 8 :align 'right
          :getter (lambda (element _table)
-                   (org-incremental--element-new-interval element)))
-   (list :name "Last review" :width 12
+                   (or (org-incremental--element-new-interval element) 0))
+         :formatter #'org-incremental--display-metadata)
+   (list :name "Last" :width 10
          :getter (lambda (element _table)
-                   (org-incremental--display-date
-                    (org-incremental--element-last-reviewed element))))
-   (list :name "Scheduled" :width 12
+                   (org-incremental--element-last-reviewed element))
+         :formatter (lambda (timestamp)
+                      (propertize (org-incremental--display-date timestamp)
+                                  'face 'shadow)))
+   (list :name "Deadline" :width 10
          :getter (lambda (element _table)
-                   (org-incremental--display-date
-                    (org-incremental--element-scheduled element))))))
+                   (org-incremental--element-deadline element))
+         :formatter (lambda (timestamp)
+                      (org-incremental--display-dated-field
+                       timestamp 'deadline)))
+   (list :name "Scheduled" :width 10
+         :getter (lambda (element _table)
+                   (org-incremental--element-scheduled element))
+         :formatter (lambda (timestamp)
+                      (org-incremental--display-dated-field
+                       timestamp 'scheduled)))))
 
 (defun org-incremental-list-current-element ()
   "Return the domain element on the current browser row."
@@ -3663,7 +3700,7 @@ opened normally only when the user visits or reviews a selected row.
                :use-header-line nil
                :actions (list "RET" #'org-incremental-list-visit
                               "r" #'org-incremental-list-review)
-               :separator-width 2))))
+               :separator-width 1))))
     (setq-local header-line-format (org-incremental-list--header-line))
     (goto-char (point-min))
     (when-let* ((first (car org-incremental-list--elements)))
@@ -3722,11 +3759,11 @@ opened normally only when the user visits or reviews a selected row.
 (ert-deftest test-org-incremental-list-renders-domain-objects ()
   "Browser rows retain stable domain object identity and actions."
   (let* ((first (org-incremental--make-element
-                 :title "First" :priority 1 :total-repeats 3
+                 :title "Zulu" :priority 1 :total-repeats 3
                  :new-interval 8 :last-reviewed "[2026-09-28 Mon]"
                  :scheduled "<2026-09-29 Tue>"))
          (second (org-incremental--make-element
-                  :title "Second" :priority 4 :total-repeats 2
+                  :title "Alpha" :priority 4 :total-repeats 2
                   :new-interval 4))
          (org-incremental-list-buffer "*org-incremental-list-test*")
          visited)
@@ -3742,6 +3779,9 @@ opened normally only when the user visits or reviews a selected row.
               (should (object-of-class-p org-incremental-list--table 'vtable))
               (should (= (length (vtable-objects
                                   org-incremental-list--table)) 2))
+              (should (equal (vtable-objects org-incremental-list--table)
+                             (list first second)))
+              (should-not (vtable-sort-by org-incremental-list--table))
               (vtable-goto-object second)
               (should (eq (vtable-current-object) second))
               (org-incremental-list-visit)
@@ -3763,6 +3803,59 @@ opened normally only when the user visits or reviews a selected row.
         (should (equal org-incremental-list--elements (list fresh)))
         (should (eq (car (vtable-objects org-incremental-list--table))
                     fresh))))))
+
+(ert-deftest test-org-incremental-list-manual-sort-is-view-local ()
+  "Interactive vtable sorting neither requeries nor mutates model order."
+  (let* ((zulu (org-incremental--make-element
+                :title "Zulu" :priority 1 :total-repeats 1 :new-interval 1))
+         (alpha (org-incremental--make-element
+                 :title "Alpha" :priority 4 :total-repeats 2 :new-interval 2))
+         (model-order (list zulu alpha))
+         (query-count 0))
+    (with-temp-buffer
+      (org-incremental-list-mode)
+      (cl-letf (((symbol-function 'org-incremental-outstanding-elements)
+                 (lambda (&rest _)
+                   (setq query-count (1+ query-count))
+                   model-order)))
+        (org-incremental-list-refresh)
+        (org-incremental-list--goto-element zulu)
+        (vtable-goto-column 1)
+        (vtable-sort-by-current-column)
+        (should (= query-count 1))
+        (should (equal model-order (list zulu alpha)))
+        (should (equal org-incremental-list--elements model-order))
+        (should (equal (vtable-objects org-incremental-list--table)
+                       model-order))
+        (should (equal (vtable-sort-by org-incremental-list--table)
+                       '((1 . ascend))))
+        ;; A deliberate browser refresh requeries and restores package order.
+        (org-incremental-list-refresh)
+        (should (= query-count 2))
+        (should-not (vtable-sort-by org-incremental-list--table))
+        (should (equal (vtable-objects org-incremental-list--table)
+                       model-order))))))
+
+(ert-deftest test-org-incremental-list-uses-native-semantic-faces ()
+  "Browser formatting uses theme-aware Org and Emacs faces."
+  (cl-letf (((symbol-function 'current-time)
+             (lambda () (encode-time 0 0 12 29 9 2026))))
+    (should (eq (get-text-property
+                 0 'face (org-incremental--display-priority-with-face 1))
+                'org-priority))
+    (should (eq (get-text-property
+                 0 'face
+                 (org-incremental--display-dated-field
+                  "<2026-09-28 Mon>" 'deadline))
+                'org-warning))
+    (should (eq (get-text-property
+                 0 'face
+                 (org-incremental--display-dated-field
+                  "<2026-09-29 Tue>" 'scheduled))
+                'org-scheduled-today))
+    (should (eq (get-text-property
+                 0 'face (org-incremental--display-metadata 3))
+                'shadow))))
 
 (ert-deftest test-org-incremental-mode-line-session-state ()
   "Session mode-line text follows queue position and disappears on end."
