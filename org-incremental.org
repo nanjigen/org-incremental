@@ -3502,10 +3502,11 @@ the model/query API.  It does not parse org-ql results, inspect org-element
 plists, or depend on live source markers.  Org files remain canonical and are
 opened normally only when the user visits or reviews a selected row.
 
-The browser exposes its dispatcher on both =?= and =C-c ?=.  The latter is the
-portable binding for modal configurations: Evil normal state intentionally
-retains =?= for backward search rather than org-incremental installing an
-overriding map.
+The vanilla browser exposes its dispatcher on both =?= and =C-c ?=.  When Evil
+is installed, an optional mode-local normal-state map follows Vim/Magit
+conventions: =j/k= navigate rows, =gr= refreshes, and =?= opens the dispatcher,
+while =/= and =n/N= retain Evil search behavior.  Core loading does not require
+Evil or Doom, and no global Evil map is changed.
 
 Only the embedded vtable uses =fixed-pitch=.  The surrounding Magit sections
 retain the user's normal UI font, while all table columns share one stable font
@@ -3670,6 +3671,21 @@ KIND is either `deadline' or `scheduled'."
   (while (and (not (bobp)) (not (vtable-current-object)))
     (forward-line -1)))
 
+(defun org-incremental-list-first ()
+  "Move to the first browser row."
+  (interactive)
+  (goto-char (point-min))
+  (while (and (not (eobp)) (not (vtable-current-object)))
+    (forward-line 1)))
+
+(defun org-incremental-list-last ()
+  "Move to the last browser row."
+  (interactive)
+  (goto-char (point-max))
+  (forward-line -1)
+  (while (and (not (bobp)) (not (vtable-current-object)))
+    (forward-line -1)))
+
 (defvar-keymap org-incremental-list-mode-map
   :parent magit-section-mode-map
   "RET" #'org-incremental-list-visit
@@ -3678,9 +3694,40 @@ KIND is either `deadline' or `scheduled'."
   "p" #'org-incremental-list-previous
   "r" #'org-incremental-list-review
   "?" #'org-incremental-dispatch
-  ;; Evil normal state intentionally retains `?' for backward search;
-  ;; `C-c ?' is the mode-specific fallback not claimed by Evil defaults.
+  ;; Portable fallback before or without the optional Evil state bindings.
   "C-c ?" #'org-incremental-dispatch)
+
+(declare-function evil-define-key* "evil-core"
+                  (state keymap key def &rest bindings))
+(declare-function evil-normalize-keymaps "evil-core" (&optional state))
+(declare-function evil-set-initial-state "evil-core" (mode state))
+
+(defun org-incremental--setup-evil-browser ()
+  "Install optional Evil normal-state bindings for the element browser.
+This function is called only after Evil has loaded and does not alter any
+global Evil state map."
+  (evil-set-initial-state 'org-incremental-list-mode 'normal)
+  (evil-define-key* 'normal org-incremental-list-mode-map
+    (kbd "j") #'org-incremental-list-next
+    (kbd "k") #'org-incremental-list-previous
+    (kbd "RET") #'org-incremental-list-visit
+    (kbd "r") #'org-incremental-list-review
+    (kbd "?") #'org-incremental-dispatch
+    (kbd "g r") #'org-incremental-list-refresh
+    (kbd "g g") #'org-incremental-list-first
+    (kbd "G") #'org-incremental-list-last
+    (kbd "q") #'quit-window
+    (kbd "TAB") #'magit-section-toggle)
+  (add-hook 'org-incremental-list-mode-hook #'evil-normalize-keymaps)
+  ;; Refresh state-specific auxiliary maps in browser buffers that predate
+  ;; loading Evil or org-incremental's optional integration.
+  (dolist (buffer (buffer-list))
+    (with-current-buffer buffer
+      (when (derived-mode-p 'org-incremental-list-mode)
+        (evil-normalize-keymaps)))))
+
+(with-eval-after-load 'evil
+  (org-incremental--setup-evil-browser))
 
 (define-derived-mode org-incremental-list-mode magit-section-mode
   "Org-Incremental"
@@ -3933,6 +3980,62 @@ KIND is either `deadline' or `scheduled'."
                 #'org-incremental-dispatch))
     (should (eq (key-binding (kbd "C-c ?"))
                 #'org-incremental-dispatch))))
+
+(ert-deftest test-org-incremental-list-boundary-navigation ()
+  "First and last commands move to the visual boundary rows."
+  (let ((first (org-incremental--make-element
+                :title "First" :priority 1 :total-repeats 1 :new-interval 1))
+        (middle (org-incremental--make-element
+                 :title "Middle" :priority 2 :total-repeats 2 :new-interval 2))
+        (last (org-incremental--make-element
+               :title "Last" :priority 3 :total-repeats 3 :new-interval 3)))
+    (with-temp-buffer
+      (org-incremental-list-mode)
+      (setq org-incremental-list--elements (list first middle last))
+      (org-incremental-list--render)
+      (org-incremental-list--goto-element middle)
+      (org-incremental-list-first)
+      (should (eq (vtable-current-object) first))
+      (org-incremental-list-last)
+      (should (eq (vtable-current-object) last)))))
+
+(declare-function evil-mode "evil" (&optional arg))
+(declare-function evil-normal-state "evil-states" ())
+
+(ert-deftest test-org-incremental-list-optional-evil-bindings ()
+  "Evil integration is mode-local and preserves normal search bindings."
+  (unless (require 'evil nil t)
+    (ert-skip "Evil is not installed in this test environment"))
+  (org-incremental--setup-evil-browser)
+  (let ((evil-was-enabled (and (boundp 'evil-mode)
+                               (symbol-value 'evil-mode))))
+    (unwind-protect
+        (progn
+          (funcall 'evil-mode 1)
+          (with-temp-buffer
+            (org-incremental-list-mode)
+            (funcall 'evil-normal-state)
+            (should (eq (symbol-value 'evil-state) 'normal))
+            (dolist (binding
+                     `(("j" . ,#'org-incremental-list-next)
+                       ("k" . ,#'org-incremental-list-previous)
+                       ("?" . ,#'org-incremental-dispatch)
+                       ("r" . ,#'org-incremental-list-review)
+                       ("RET" . ,#'org-incremental-list-visit)
+                       ("g r" . ,#'org-incremental-list-refresh)
+                       ("g g" . ,#'org-incremental-list-first)
+                       ("G" . ,#'org-incremental-list-last)
+                       ("TAB" . ,#'magit-section-toggle)
+                       ("q" . ,#'quit-window)))
+              (should (eq (key-binding (kbd (car binding))) (cdr binding))))
+            (should (memq (key-binding (kbd "/"))
+                          '(evil-search-forward evil-ex-search-forward)))
+            (should (memq (key-binding (kbd "n"))
+                          '(evil-search-next evil-ex-search-next)))
+            (should (memq (key-binding (kbd "N"))
+                          '(evil-search-previous evil-ex-search-previous)))))
+      (unless evil-was-enabled
+        (funcall 'evil-mode -1)))))
 
 (ert-deftest test-org-incremental-mode-line-session-state ()
   "Session mode-line text follows queue position and disappears on end."
