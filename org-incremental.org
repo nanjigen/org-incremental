@@ -2093,6 +2093,7 @@ changing session state or UI."
   (setq org-incremental-current-queue (org-incremental-select-outstanding)
         org-incremental-current-queue-position 0)
   (org-incremental-set-current-shift)
+  (org-incremental--update-session-ui)
   org-incremental-current-queue)
 
 (define-obsolete-function-alias
@@ -2586,7 +2587,7 @@ and revisit the restored element, including after final-item termination."
           (org-incremental--visit-element restored))
       (when (derived-mode-p 'org-incremental-list-mode)
         (org-incremental-list-refresh)))
-    (force-mode-line-update t)
+    (org-incremental--update-session-ui)
     (message "Undid review of %s" (org-incremental--element-title restored))
     restored))
 
@@ -2598,8 +2599,8 @@ and revisit the restored element, including after final-item termination."
         (org-incremental-mode -1))))
   (org-incremental-element-visit element)
   (org-narrow-to-subtree)
-  (org-incremental-mode 1)
   (setq org-incremental-session-buffer (current-buffer))
+  (org-incremental-mode 1)
   element)
 
 (defun org-incremental--visit-current-element ()
@@ -2615,6 +2616,7 @@ Return nil without changing state when the target is outside the queue."
     (when (and (>= target 0)
                (< target (length org-incremental-current-queue)))
       (setq org-incremental-current-queue-position target)
+      (org-incremental--update-session-ui)
       (org-incremental-current-element))))
 
 (defun org-incremental-end-session ()
@@ -2775,6 +2777,7 @@ If reviewing fails, leave the queue position and session state unchanged."
              org-incremental-current-queue)
         (org-incremental-element-review
          (org-incremental-current-element)))
+  (org-incremental--update-session-ui)
   (if (org-incremental--move-queue-position 1)
       (org-incremental--visit-current-element)
     (org-incremental-end-session)))
@@ -3358,12 +3361,21 @@ https://github.com/sp1ff/elfeed-score
 #+begin_src emacs-lisp :noweb yes :noweb-ref minor-mode :results silent
 (defvar org-incremental-mode nil)
 
-(defun org-incremental-mode-line-string ()
-  "Return compact active-session state for the mode line."
+(defvar-local org-incremental--saved-header-line-format nil
+  "Header-line value saved before `org-incremental-mode' was enabled.")
+
+(defvar-local org-incremental--saved-header-line-local-p nil
+  "Whether `header-line-format' was buffer-local before session mode.")
+
+(defvar-local org-incremental--header-line-installed-p nil
+  "Non-nil when org-incremental owns this buffer's header line.")
+
+(defun org-incremental--session-status-string ()
+  "Return compact status data shared by session UI formatters."
   (when (and org-incremental-mode org-incremental-current-queue)
     (let ((element (org-incremental-current-element)))
       (if (org-incremental-element-p element)
-          (format " OrgInc %d/%d · P%s · AF%s · %s→%sd"
+          (format "%d/%d · P%s · AF%s · %s→%sd"
                   (1+ org-incremental-current-queue-position)
                   (length org-incremental-current-queue)
                   (org-incremental--display-priority
@@ -3371,13 +3383,34 @@ https://github.com/sp1ff/elfeed-score
                   (or (org-incremental--element-a-factor element) "—")
                   (or (org-incremental--element-old-interval element) "—")
                   (or (org-incremental--element-new-interval element) "—"))
-        (format " OrgInc %d/%d"
+        (format "%d/%d"
                 (1+ org-incremental-current-queue-position)
                 (length org-incremental-current-queue))))))
+
+(defun org-incremental-mode-line-string ()
+  "Return compact active-session state for the mode line."
+  (when-let* ((status (org-incremental--session-status-string)))
+    (concat " OrgInc " status)))
+
+(defun org-incremental-header-line-string ()
+  "Return the active session's compact header-line HUD text."
+  (when-let* ((status (org-incremental--session-status-string)))
+    (concat "Org Incremental · " status)))
 
 (defvar org-incremental-mode-line-format
   '(:eval (org-incremental-mode-line-string))
   "Reusable mode-line construct for an active incremental session.")
+
+(defvar org-incremental-header-line-format
+  '(:eval (org-incremental-header-line-string))
+  "Header-line construct displayed in the active session Org buffer.")
+
+(defun org-incremental--update-session-ui ()
+  "Request immediate redisplay of the active session HUD and mode line."
+  (if (buffer-live-p org-incremental-session-buffer)
+      (with-current-buffer org-incremental-session-buffer
+        (force-mode-line-update))
+    (force-mode-line-update)))
 
 (define-minor-mode org-incremental-mode
   "Mark the current Org buffer as the active incremental session buffer.
@@ -3385,7 +3418,26 @@ Start a session with `org-incremental' and finish it with
 `org-incremental-end-session'."
   :lighter org-incremental-mode-line-format
   :keymap nil
-  (force-mode-line-update))
+  (if org-incremental-mode
+      (progn
+        (unless (derived-mode-p 'org-mode)
+          (setq org-incremental-mode nil)
+          (user-error "Org incremental sessions require an Org buffer"))
+        (unless org-incremental--header-line-installed-p
+          (setq org-incremental--saved-header-line-local-p
+                (local-variable-p 'header-line-format)
+                org-incremental--saved-header-line-format header-line-format
+                org-incremental--header-line-installed-p t))
+        (setq-local header-line-format org-incremental-header-line-format))
+    (when org-incremental--header-line-installed-p
+      (if org-incremental--saved-header-line-local-p
+          (setq-local header-line-format
+                      org-incremental--saved-header-line-format)
+        (kill-local-variable 'header-line-format))
+      (setq org-incremental--saved-header-line-format nil
+            org-incremental--saved-header-line-local-p nil
+            org-incremental--header-line-installed-p nil)))
+  (org-incremental--update-session-ui))
 #+end_src
 
 Check whether buffer is an incrementalised one.
@@ -3791,11 +3843,15 @@ and date columns remain fixed.
     (propertize text 'font-lock-face
                 (if rank (org-get-priority-face rank) 'shadow))))
 
+(defun org-incremental--today-string ()
+  "Return today's local date in the package's comparison format."
+  (format-time-string "%Y-%m-%d" (current-time)))
+
 (defun org-incremental--date-face (timestamp kind)
   "Return an Org face for TIMESTAMP of KIND.
 KIND is either `deadline' or `scheduled'."
   (when-let* ((date (org-incremental--timestamp-date timestamp)))
-    (let ((today (format-time-string "%Y-%m-%d")))
+    (let ((today (org-incremental--today-string)))
       (cond ((string-lessp date today)
              (if (eq kind 'deadline)
                  'org-warning
@@ -3818,13 +3874,13 @@ KIND is either `deadline' or `scheduled'."
   "Return non-nil when ELEMENT was last reviewed today."
   (equal (org-incremental--display-date
           (org-incremental--element-last-reviewed element))
-         (format-time-string "%Y-%m-%d")))
+         (org-incremental--today-string)))
 
 (defun org-incremental--scheduled-today-p (element)
   "Return non-nil when ELEMENT is scheduled today."
   (equal (org-incremental--display-date
           (org-incremental--element-scheduled element))
-         (format-time-string "%Y-%m-%d")))
+         (org-incremental--today-string)))
 
 (defun org-incremental-list--header-line ()
   "Return declarative status text for the current browser."
@@ -4318,6 +4374,49 @@ global Evil state map."
                               (org-incremental-mode-line-string)))
       (org-incremental-end-session)
       (should-not (org-incremental-mode-line-string)))))
+
+(ert-deftest test-org-incremental-session-header-hud-lifecycle ()
+  "Session HUD follows queue state and restores the prior header line."
+  (with-temp-buffer
+    (org-mode)
+    (setq-local header-line-format '("Existing header"))
+    (let ((first (org-incremental--make-element
+                  :priority 4 :a-factor 1.68
+                  :old-interval 13 :new-interval 22))
+          (second (org-incremental--make-element
+                   :priority 1 :a-factor 2
+                   :old-interval 4 :new-interval 8))
+          (refreshed (org-incremental--make-element
+                      :priority 5 :a-factor 1.5
+                      :old-interval 8 :new-interval 12))
+          (org-incremental-current-queue nil)
+          (org-incremental-current-queue-position 0)
+          (org-incremental-session-buffer (current-buffer)))
+      (setq org-incremental-current-queue (list first second))
+      (org-incremental-mode 1)
+      (should (equal header-line-format
+                     org-incremental-header-line-format))
+      (should (equal (org-incremental-header-line-string)
+                     "Org Incremental · 1/2 · P4 · AF1.68 · 13→22d"))
+      (should (eq (org-incremental--move-queue-position 1) second))
+      (should (equal (org-incremental-header-line-string)
+                     "Org Incremental · 2/2 · P1 · AF2 · 4→8d"))
+      (setf (nth 1 org-incremental-current-queue) refreshed)
+      (org-incremental--update-session-ui)
+      (should (equal (org-incremental-header-line-string)
+                     "Org Incremental · 2/2 · P5 · AF1.5 · 8→12d"))
+      (org-incremental-mode -1)
+      (should (local-variable-p 'header-line-format))
+      (should (equal header-line-format '("Existing header"))))))
+
+(ert-deftest test-org-incremental-session-mode-requires-org-buffer ()
+  "Explicit activation outside Org errors without touching its header line."
+  (with-temp-buffer
+    (fundamental-mode)
+    (setq-local header-line-format '("Unrelated header"))
+    (should-error (org-incremental-mode 1) :type 'user-error)
+    (should-not org-incremental-mode)
+    (should (equal header-line-format '("Unrelated header")))))
 
 (ert-deftest test-org-incremental-agenda-uses-native-custom-command ()
   "Agenda bridge delegates to a genuine org-ql Agenda block."
